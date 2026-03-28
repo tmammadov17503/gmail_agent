@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Email Agent (Live Delete + Error Fix)</title>
+<title>Email Agent (Live Delete Fixed)</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✉️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -149,6 +149,7 @@ let allData = [];
 let activeAcc = 0;
 let activeTab = 'Primary';
 let memory = { deleted_senders: [] }; 
+let tokens = []; // <-- THIS IS THE LINE I ACCIDENTALLY DELETED!
 
 window.onload = function(){
   const saved = localStorage.getItem('ea_cfg');
@@ -212,7 +213,6 @@ function gmailAuth(idx){
 async function gmailFetch(token){
   const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=in:inbox', {headers:{Authorization:'Bearer '+token}});
   
-  // FIX: Explicitly catch and throw Google API errors so they don't fail silently
   if(!r.ok) {
     const errData = await r.json();
     throw new Error(`Google API blocked the request. Did you check the permission box during login? Details: ${errData.error?.message || r.status}`);
@@ -261,7 +261,6 @@ async function groqCategorizeBatch(emails){
       })
     });
     
-    // FIX: Catch Groq specific API errors
     if(!r.ok) {
         const errText = await r.text();
         throw new Error(`Groq API Error: ${errText}`);
@@ -282,7 +281,7 @@ async function runScan(){
   const btn = document.getElementById('btn-scan');
   btn.disabled = true;
   const c = document.getElementById('content');
-  let scanErrors = []; // Array to hold the real errors
+  let scanErrors = []; 
   
   for(let i=0; i<cfg.numAccounts; i++){
     try{
@@ -310,7 +309,6 @@ async function runScan(){
   renderSidebar();
   renderContent();
   
-  // Display errors if any happened!
   if(scanErrors.length > 0) {
       const errorDiv = document.createElement('div');
       errorDiv.className = 'erbox';
@@ -329,7 +327,6 @@ function renderSidebar(){
 function renderContent(){
   const acc = allData[activeAcc];
   if(!acc.emails || !acc.emails.length) { 
-      // If content was already overwritten by an error message, don't clear it.
       if(!document.querySelector('.erbox')) {
           document.getElementById('content').innerHTML = '<div class="empty">No emails loaded. Hit Scan!</div>'; 
       }
@@ -364,7 +361,6 @@ function renderContent(){
     </div>`;
   });
 
-  // Preserve the error box if it exists when re-rendering
   const existingError = document.querySelector('.erbox');
   document.getElementById('content').innerHTML = html;
   if(existingError) document.getElementById('content').prepend(existingError);
