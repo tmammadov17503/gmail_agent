@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Email Agent (Tabs + Categories + Memory)</title>
+<title>Email Agent (Smart Sorting & Skip Fix)</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✉️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -188,7 +188,7 @@ let cfg = {};
 let allData = [];
 let activeAcc = 0;
 let activeTab = 'Primary';
-let memory = { trashed: [], kept: [] }; // Upgraded Memory Structure
+let memory = { trashed: [], kept: [] }; 
 let tokens = [];
 
 let scanIndex = 0;
@@ -200,7 +200,6 @@ window.onload = function(){
   
   if(savedMem) {
     let p = JSON.parse(savedMem);
-    // Migrate old memory format if needed
     if(p.deleted_senders) memory = { trashed: p.deleted_senders, kept: [] };
     else memory = p;
   }
@@ -245,7 +244,6 @@ function learnAction(sender, action) {
     if(!memory.kept.includes(sender)) memory.kept.push(sender);
   }
   
-  // Cap memory size
   if(memory.trashed.length > 40) memory.trashed.shift();
   if(memory.kept.length > 40) memory.kept.shift();
   
@@ -294,7 +292,6 @@ async function gmailFetch(token){
   }
 
   return msgs.map(m=>{
-    // Fix for case-insensitive headers to prevent blank '...' emails
     const getHeader = (name) => {
       const h = m.payload?.headers?.find(x => x.name.toLowerCase() === name.toLowerCase());
       return h ? h.value : '';
@@ -309,7 +306,7 @@ async function gmailFetch(token){
   });
 }
 
-// ━━━ AI CATEGORIZATION ━━━
+// ━━━ AI CATEGORIZATION (UPGRADED PROMPT) ━━━
 async function groqCategorizeBatch(emails){
   let allCats = [];
   const BATCH_SIZE = 25; 
@@ -319,19 +316,24 @@ async function groqCategorizeBatch(emails){
     const list = chunk.map((e,idx)=>`[${idx}] From: ${e.from}\nSubj: ${e.subject}`).join('\n');
     
     let memoryContext = "";
-    if(memory.trashed.length > 0) memoryContext += `\nUSER TRASHES emails from: ${memory.trashed.join(', ')}. Put them in 'Promotions' or 'Updates' tab and 'spam' or 'ads' category.`;
-    if(memory.kept.length > 0) memoryContext += `\nUSER KEEPS emails from: ${memory.kept.join(', ')}. Put them in 'Primary' tab and 'important' or 'work' category.`;
+    if(memory.trashed.length > 0) memoryContext += `\n[MEMORY] USER TRASHES emails from: ${memory.trashed.join(', ')}. Route to 'Promotions' or 'Updates' tab and 'spam' or 'ads' category.`;
+    if(memory.kept.length > 0) memoryContext += `\n[MEMORY] USER KEEPS emails from: ${memory.kept.join(', ')}. Route to 'Primary' tab and 'important' or 'work' category.`;
 
-    const systemPrompt = `You are an email sorter. Assign each email a "tab" AND a "category".
-    Valid Tabs: Primary, Promotions, Social, Updates.
-    Valid Categories: important, work, finance, social, newsletter, ads, spam, other.
+    // EXPLICIT RULES to force Groq to classify correctly
+    const systemPrompt = `You are a strict email sorting algorithm. You MUST assign each email a "tab" AND a "category".
+    [VALID TABS]: Primary, Promotions, Social, Updates
+    [VALID CATEGORIES]: important, work, finance, social, newsletter, ads, spam, other
     
-    Rules:
-    - LinkedIn, Facebook, Instagram go to "Social" tab and "social" or "work" category.
-    - Codeforces, Hackathons go to "Updates" tab and "work" category.
+    [ROUTING RULES]:
+    - If sender is LinkedIn, Facebook, Instagram, Twitter, TikTok, Booking.com -> Tab MUST BE "Social", Category MUST BE "social".
+    - If email is a discount, sale, store offer, or marketing -> Tab MUST BE "Promotions", Category MUST BE "ads".
+    - If email is a receipt, bill, bank alert -> Tab MUST BE "Updates", Category MUST BE "finance".
+    - If email is an automated system alert, job alert, Codeforces -> Tab MUST BE "Updates", Category MUST BE "work" or "other".
+    - If email is a real human directly emailing the user -> Tab MUST BE "Primary", Category MUST BE "important".
     ${memoryContext}
     
-    Return ONLY a JSON object: {"results": [{"tab": "...", "category": "..."}]}`;
+    Return ONLY a valid JSON object matching the exact order of the emails provided:
+    {"results": [{"tab": "...", "category": "..."}]}`;
 
     try {
       const r=await fetch(`https://api.groq.com/openai/v1/chat/completions`,{
@@ -401,7 +403,7 @@ function showNextAccountPrompt(){
 }
 
 function skipAccount(i){
-  allData[i].emails = [];
+  // FIXED: No longer wipes existing emails for the skipped account.
   scanIndex++;
   showNextAccountPrompt();
 }
@@ -426,6 +428,7 @@ async function connectAccount(i){
       allData[i].emails = [];
     }
   }catch(e){ 
+    // FIXED: Does not wipe existing emails if the login fails or is closed early.
     scanErrors.push(`Account ${i+1}: ${e.message}`);
   }
   
@@ -545,7 +548,6 @@ function keepSingle(id, sender, btn){
   document.getElementById('em-'+id).style.display = 'none';
   acc.emails = acc.emails.filter(e => e.id !== id);
   renderSidebar(); 
-  // We do not call Google API to delete, so it safely "stays" in the real inbox.
 }
 
 async function deleteSingle(id, sender, btn){
