@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Email Agent (Forced Consent & True Sorting)</title>
+<title>Email Agent (AI Reader & Replier)</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✉️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -29,7 +29,7 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5;}
 
-/* ━━━ ONBOARDING ━━━ */
+/* ONBOARDING */
 #onboarding{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
 .ob-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:40px;max-width:480px;width:100%;box-shadow: 0 10px 30px rgba(0,0,0,0.05);}
 .ob-icon{font-size:32px;margin-bottom:16px;display:block;}
@@ -44,10 +44,9 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 .btn:disabled{opacity:0.6;cursor:not-allowed;}
 .btn-ink{background:var(--ink);color:#fff;width:100%;padding:13px;font-size:14px;border:none;}
 .btn-ink:hover:not(:disabled){background:var(--ink2);transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15);}
-.err{font-size:12px;color:var(--red);margin-top:8px;padding:8px 12px;background:var(--red-bg);border-radius:8px;display:none;}
 .erbox{background:var(--red-bg);border:1px solid var(--red-b);border-radius:var(--radius);padding:14px 18px;font-size:13px;color:var(--red);margin-bottom:14px;line-height:1.6;}
 
-/* ━━━ APP SHELL ━━━ */
+/* APP SHELL */
 #app{display:none;flex-direction:column;min-height:100vh;}
 #app.on{display:flex;}
 .topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow: 0 2px 10px rgba(0,0,0,0.02);}
@@ -64,9 +63,9 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 .acc-item{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2);transition: 0.15s;font-weight:500;}
 .acc-item:hover{background:var(--bg);}
 .acc-item.active{background:var(--bg3);color:var(--text);font-weight:600;}
-.content{flex:1;overflow-y:auto;padding:24px 32px;}
+.content{flex:1;overflow-y:auto;padding:24px 32px; position:relative;}
 
-/* Tabs */
+/* Tabs & Cats */
 .tabs{display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto;scrollbar-width:none;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{padding:12px 16px;font-size:14px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:8px;white-space:nowrap;transition:0.2s;}
@@ -74,7 +73,6 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 .tab.active{color:var(--primary);border-bottom-color:var(--primary);}
 .tab-badge{background:var(--bg3);padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;}
 
-/* Categories */
 .cb{margin-bottom:12px;}
 .ch{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;user-select:none;transition:0.15s;}
 .ch:hover{background:var(--bg3);border-color:var(--border2);}
@@ -88,53 +86,77 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 .ep.open{display:block;}
 
 /* Email Rows */
-.er{display:grid;grid-template-columns:1fr auto;gap:16px;padding:14px 16px;border-bottom:1px solid var(--border);transition:background 0.1s;}
+.er{display:grid;grid-template-columns:1fr auto;gap:16px;padding:14px 16px;border-bottom:1px solid var(--border);transition:all 0.1s; cursor:pointer;}
 .er:last-child{border-bottom:none;}
-.er:hover{background:var(--bg3);}
-.e-info{cursor:pointer;}
+.er:hover{background:var(--primary-bg); transform:scale(1.002); box-shadow:0 4px 12px rgba(26,74,136,0.05); z-index:10; position:relative; border-bottom-color:transparent; border-radius:6px;}
+.e-info{padding-right: 10px;}
 .ef{font-size:14px;font-weight:600;margin-bottom:2px;color:var(--text);display:flex;align-items:center;gap:8px;}
 .t-badge{font-size:11px;color:var(--text3);background:var(--border);padding:2px 8px;border-radius:8px;font-weight:600;}
 .es{font-size:13.5px;color:var(--text2);margin-bottom:4px;}
 .eq{font-size:12.5px;color:var(--text3);line-height:1.5;}
-.snippet-full{display:none;margin-top:8px;color:var(--text2);background:var(--bg);padding:10px 12px;border-radius:8px;border:1px solid var(--border);}
-.e-info.expanded .snippet-short{display:none;}
-.e-info.expanded .snippet-full{display:block;}
 
+/* Action Buttons */
 .er2{display:flex;align-items:flex-start;gap:8px;}
 .eb2{padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--bg2);transition:all 0.15s;}
 .eb2.kp{color:var(--green);border-color:var(--green-b);}
 .eb2.kp:hover:not(:disabled){background:var(--green-bg);}
 .eb2.dl{color:var(--red);border-color:var(--red-b);}
 .eb2.dl:hover:not(:disabled){background:var(--red-bg);}
+.eb2.rp{color:var(--blue);border-color:var(--blue-b);}
+.eb2.rp:hover:not(:disabled){background:var(--blue-bg);}
 
-/* Top actions */
 .tab-actions{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;}
 .btn-del-all{color:var(--red);border-color:var(--red-b);background:var(--red-bg);}
 .btn-del-all:hover:not(:disabled){background:#f4d2cd;}
 
-/* Memory / empty */
 .empty{text-align:center;padding:60px 20px;color:var(--text3);background:var(--bg2);border-radius:var(--radius);border:1px dashed var(--border2);}
 .lb{padding:16px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;font-size:14px;display:flex;align-items:center;gap:12px;box-shadow: 0 2px 8px rgba(0,0,0,0.03);}
-.mw{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(2px);z-index:200;align-items:center;justify-content:center;padding:20px;}
+
+/* Modals */
+.mw{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(3px);z-index:200;align-items:center;justify-content:center;padding:20px;}
 .mw.open{display:flex;}
 .mb{background:var(--bg2);padding:32px;border-radius:16px;width:100%;max-width:440px;box-shadow: 0 15px 40px rgba(0,0,0,0.15);}
 
-/* ━━━ MOBILE RESPONSIVENESS ━━━ */
+/* Full Email Reader */
+.em-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); z-index:300; align-items:center; justify-content:center; padding:20px; }
+.em-modal.open { display:flex; animation: fadeIn 0.2s ease-out; }
+.em-box { background:var(--bg2); width:100%; max-width:850px; height:85vh; border-radius:16px; display:flex; flex-direction:column; overflow:hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.25); animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+.em-header { padding:20px 24px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; gap:16px; background:var(--bg); }
+.em-h-info { flex:1; overflow:hidden; }
+.em-h-subj { font-size:18px; font-weight:600; margin-bottom:6px; color:var(--text); line-height:1.3; }
+.em-h-from { font-size:13px; color:var(--text2); display:flex; align-items:center; gap:8px;}
+.em-close { background:var(--bg3); border:none; font-size:20px; cursor:pointer; color:var(--text2); transition:0.2s; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+.em-close:hover { background:var(--border2); color:var(--text); }
+.em-body { flex:1; overflow:hidden; background:#fff; position:relative; }
+.em-iframe { width:100%; height:100%; border:none; background:#fff; }
+.em-loader { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(255,255,255,0.9); color:var(--text2); gap:12px; font-weight:500; z-index: 10; }
+.spinner { width:24px; height:24px; border:3px solid var(--border2); border-top-color:var(--primary); border-radius:50%; animation:spin 1s linear infinite; }
+
+/* Reply Composer */
+.rep-textarea { width:100%; height:250px; padding:12px; border:1px solid var(--border2); border-radius:8px; font-family:inherit; font-size:14px; resize:vertical; background:var(--bg); color:var(--text); outline:none; }
+.rep-textarea:focus { border-color:var(--primary); background:var(--bg2); }
+
+@keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+@keyframes slideUp { from{transform:translateY(30px);opacity:0;} to{transform:translateY(0);opacity:1;} }
+@keyframes spin { 100% { transform:rotate(360deg); } }
+
+/* MOBILE RESPONSIVENESS */
 @media (max-width: 768px) {
   .layout { flex-direction: column; }
   .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); padding: 12px; flex-direction: row; overflow-x: auto; gap: 8px; }
-  .sidebar::-webkit-scrollbar { display: none; }
   .sl { display: none; }
   #sb-accs { display: flex; gap: 8px; width: 100%; }
   .acc-item { white-space: nowrap; padding: 8px 14px; flex-shrink: 0; }
   .topbar { padding: 0 16px; }
-  .tb-title { display: none; } /* Give more room to buttons on tiny screens */
+  .tb-title { display: none; }
   .content { padding: 16px; }
-  .er { grid-template-columns: 1fr; gap: 12px; } /* Stack buttons under email */
-  .er2 { justify-content: flex-end; width: 100%; border-top: 1px dashed var(--border); padding-top: 10px; }
+  .er { grid-template-columns: 1fr; gap: 12px; }
+  .er2 { justify-content: space-between; width: 100%; border-top: 1px dashed var(--border); padding-top: 12px; }
   .eb2 { flex: 1; text-align: center; }
   .tab-actions { flex-direction: column; align-items: flex-start; }
   .btn-del-all { width: 100%; }
+  .em-box { height:100vh; max-width:100%; border-radius:0; }
+  .em-modal { padding:0; }
 }
 </style>
 </head>
@@ -144,7 +166,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 <div class="ob-wrap">
   <span class="ob-icon">🗂️</span>
   <h1>Email Agent</h1>
-  <p class="sub">Thread Edition with <strong>Forced Consent</strong>. Make sure you check the permission box when Google asks, otherwise Trashing will fail!</p>
+  <p class="sub">AI Reader & Replier. Check all Google permissions (Modify & Send) so the app works properly!</p>
   <div class="fl"><label>Groq API Key</label><input class="fi" id="ob-gk" type="password" placeholder="gsk_..."></div>
   <div class="fl"><label>Google OAuth Client ID</label><input class="fi" id="ob-oc" type="text" placeholder="xxx.apps.googleusercontent.com"></div>
   <div class="fl"><label>Accounts</label>
@@ -160,7 +182,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
     <div class="tb-l"><div class="tb-logo">✉</div><span class="tb-title">Email Agent</span></div>
     <div class="tb-r">
       <button class="btn" onclick="openSettings()" title="Settings">⚙️</button>
-      <button class="scan-btn" onclick="runScan()" id="btn-scan">↻ Scan 100 Threads</button>
+      <button class="scan-btn" onclick="runScan()" id="btn-scan">↻ Scan Inbox</button>
     </div>
   </div>
 
@@ -170,7 +192,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
       <div id="sb-accs"></div>
     </div>
     <div class="content" id="content">
-      <div class="empty">Click <strong>Scan</strong> to fetch, sort, and organize your threads.</div>
+      <div class="empty">Click <strong>Scan Inbox</strong> to fetch, sort, and organize your threads securely.</div>
     </div>
   </div>
 </div>
@@ -189,8 +211,53 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
   </div>
 </div>
 
+<div class="em-modal" id="read-modal">
+  <div class="em-box">
+    <div class="em-header">
+      <div class="em-h-info">
+        <div class="em-h-subj" id="rd-subj">Loading Subject...</div>
+        <div class="em-h-from" id="rd-from">Sender</div>
+      </div>
+      <button class="em-close" onclick="closeModal('read-modal')">×</button>
+    </div>
+    <div class="em-body">
+      <div class="em-loader" id="rd-loader"><div class="spinner"></div> Decrypting and loading content...</div>
+      <iframe class="em-iframe" id="rd-frame" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"></iframe>
+    </div>
+  </div>
+</div>
+
+<div class="em-modal" id="reply-modal">
+  <div class="em-box" style="height: auto; max-height: 90vh;">
+    <div class="em-header">
+      <div class="em-h-info">
+        <div class="em-h-subj">Compose Reply 🤖</div>
+        <div class="em-h-from" id="rp-to">To: </div>
+      </div>
+      <button class="em-close" onclick="closeModal('reply-modal')">×</button>
+    </div>
+    <div class="em-body" style="padding: 24px; display:flex; flex-direction:column; gap:16px; overflow-y:auto;">
+      <div class="em-loader" id="rp-loader" style="display:none; z-index: 20;"><div class="spinner"></div> AI is analyzing & drafting reply...</div>
+      
+      <div class="fl">
+        <label>Subject</label>
+        <input class="fi" id="rp-subj" type="text">
+      </div>
+      <div class="fl">
+        <label>Message</label>
+        <textarea class="rep-textarea" id="rp-body"></textarea>
+      </div>
+      
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:8px;">
+        <button class="btn" onclick="closeModal('reply-modal')">Cancel</button>
+        <button class="btn btn-ink" id="rp-send-btn" style="width:auto; padding:10px 24px;">Send Reply 🚀</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-// Configuration
+// --- CONFIG & STATE ---
 const TABS = ['Primary', 'Promotions', 'Social', 'Updates'];
 const CATS = {
   important: {label:'Important', c:'var(--blue)',   bg:'var(--blue-bg)',   e:'★'},
@@ -204,29 +271,16 @@ const CATS = {
 };
 const CAT_ORDER = ['important','work','finance','social','newsletter','ads','spam','other'];
 
-let cfg = {};
-let allData = [];
-let activeAcc = 0;
-let activeTab = 'Primary';
-let memory = { trashed: [], kept: [] }; 
-let tokens = [];
+let cfg = {}; let allData = []; let activeAcc = 0; let activeTab = 'Primary';
+let memory = { trashed: [], kept: [] }; let tokens = [];
+let scanIndex = 0; let scanErrors = [];
 
-let scanIndex = 0;
-let scanErrors = [];
-
+// --- UTILS ---
 window.onload = function(){
   const saved = localStorage.getItem('ea_cfg');
   const savedMem = localStorage.getItem('ea_memory');
-  
-  if(savedMem) {
-    let p = JSON.parse(savedMem);
-    if(p.deleted_senders) memory = { trashed: p.deleted_senders, kept: [] };
-    else memory = p;
-  }
-  
-  if(saved){
-    try{ cfg = JSON.parse(saved); initApp(); return; }catch(e){}
-  }
+  if(savedMem) memory = JSON.parse(savedMem);
+  if(saved){ try{ cfg = JSON.parse(saved); initApp(); return; }catch(e){} }
   document.getElementById('onboarding').style.display='flex';
 };
 
@@ -255,36 +309,29 @@ function openSettings(){
 }
 function resetApp(){ localStorage.clear(); location.reload(); }
 function clearMemory(){ memory = {trashed: [], kept: []}; localStorage.setItem('ea_memory', JSON.stringify(memory)); alert('AI Memory wiped.'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-// ━━━ MEMORY LOGIC ━━━
-function learnAction(sender, action) {
-  if(!sender || sender === '(Unknown Sender)') return;
-  
-  if(action === 'trash') {
-    memory.kept = memory.kept.filter(s => s !== sender);
-    if(!memory.trashed.includes(sender)) memory.trashed.push(sender);
-  } else if (action === 'keep') {
-    memory.trashed = memory.trashed.filter(s => s !== sender);
-    if(!memory.kept.includes(sender)) memory.kept.push(sender);
-  }
-  
-  if(memory.trashed.length > 40) memory.trashed.shift();
-  if(memory.kept.length > 40) memory.kept.shift();
-  
-  localStorage.setItem('ea_memory', JSON.stringify(memory));
+// robust base64url decode
+function decodeBase64(str) {
+  try {
+    let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    return decodeURIComponent(escape(window.atob(b64)));
+  } catch(e) { return "Error decoding email content."; }
 }
 
-// ━━━ AUTH & THREAD FETCH (FORCED CONSENT) ━━━
+// --- AUTH (Includes Send Scope!) ---
 function gmailAuth(idx){
   return new Promise((res,rej)=>{
-    const scope='https://www.googleapis.com/auth/gmail.modify';
+    // Added mail.google.com for full access to reply and modify
+    const scope='https://mail.google.com/';
     const redir=location.href.split('?')[0].split('#')[0];
     const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(cfg.clientId)}&redirect_uri=${encodeURIComponent(redir)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=consent%20select_account`;
     const pop=window.open(url,'ga'+idx,'width=500,height=600,left=300,top=80');
-    if(!pop){rej(new Error('Browser blocked the popup window.'));return;}
+    if(!pop){rej(new Error('Browser blocked popup.'));return;}
     
     const t=setInterval(()=>{
-      if(pop.closed){clearInterval(t);rej(new Error('Auth window closed manually.'));}
+      if(pop.closed){clearInterval(t);rej(new Error('Auth window closed.'));}
       try{
         if(pop.location.href.includes('access_token=')){
           clearInterval(t); pop.close();
@@ -295,13 +342,10 @@ function gmailAuth(idx){
   });
 }
 
+// --- SCANNING ---
 async function gmailFetch(token){
   const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=100&q=in:inbox', {headers:{Authorization:'Bearer '+token}});
-  if(!r.ok) {
-    const errData = await r.json();
-    throw new Error(`Google API blocked the request. Did you check the permissions? Details: ${errData.error?.message || r.status}`);
-  }
-  
+  if(!r.ok) throw new Error('API request blocked. Check Permissions.');
   const d=await r.json();
   if(!d.threads) return [];
   
@@ -309,345 +353,354 @@ async function gmailFetch(token){
   for(let i=0; i<d.threads.length; i+=25){
     const chunk = d.threads.slice(i, i+25);
     const chunkRes = await Promise.all(chunk.map(t=>
-      fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${t.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
+      fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${t.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Message-ID`,
         {headers:{Authorization:'Bearer '+token}}).then(res=>res.json())
     ));
     threads.push(...chunkRes);
   }
 
-  // BUG FIX: Added safety filter to ensure 'messages' array exists before mapping
-  const processed = threads
-    .filter(t => t && t.messages && t.messages.length > 0)
-    .map(t => {
+  const processed = threads.filter(t => t && t.messages && t.messages.length > 0).map(t => {
       const firstMsg = t.messages[0]; 
       const lastMsg = t.messages[t.messages.length - 1]; 
-
-      const getHeader = (msg, name) => {
-        const h = msg.payload?.headers?.find(x => x.name.toLowerCase() === name.toLowerCase());
-        return h ? h.value : '';
-      };
+      const getH = (m, n) => { const h = m.payload?.headers?.find(x => x.name.toLowerCase() === n.toLowerCase()); return h ? h.value : ''; };
       
       return { 
         id: t.id, 
+        msgId: lastMsg.id, // Need specific message ID to fetch full body later
         count: t.messages.length,
         time: parseInt(lastMsg.internalDate, 10) || 0, 
-        from: getHeader(lastMsg, 'From').replace(/<[^>]+>/,'').trim() || '(Unknown Sender)', 
-        subject: getHeader(firstMsg, 'Subject') || '(No Subject)', 
+        rawFrom: getH(lastMsg, 'From'),
+        from: getH(lastMsg, 'From').replace(/<[^>]+>/,'').trim() || 'Unknown', 
+        subject: getH(firstMsg, 'Subject') || '(No Subject)', 
         snippet: lastMsg.snippet || 'No preview available.' 
       };
   });
-  
   return processed.sort((a, b) => b.time - a.time);
 }
 
-// ━━━ STRICT AI CATEGORIZATION ━━━
+// --- STRICT AI CATEGORIZATION ---
 async function groqCategorizeBatch(emails){
   let allCats = [];
   const BATCH_SIZE = 25; 
-  
   for(let i=0; i<emails.length; i+=BATCH_SIZE) {
     const chunk = emails.slice(i, i+BATCH_SIZE);
     const list = chunk.map((e,idx)=>`[${idx}] From: ${e.from}\nSubj: ${e.subject}`).join('\n');
-    
     let memoryContext = "";
-    if(memory.trashed.length > 0) memoryContext += `\n[USER MEMORY]: Trashed senders: ${memory.trashed.join(', ')} -> Tab MUST be 'Promotions', Category 'spam'.`;
-    if(memory.kept.length > 0) memoryContext += `\n[USER MEMORY]: Kept senders: ${memory.kept.join(', ')} -> Tab MUST be 'Primary', Category 'important'.`;
+    if(memory.trashed.length > 0) memoryContext += `\nTrashed senders: ${memory.trashed.join(', ')} -> Tab MUST be 'Promotions', Category 'spam'.`;
+    if(memory.kept.length > 0) memoryContext += `\nKept senders: ${memory.kept.join(', ')} -> Tab MUST be 'Primary', Category 'important'.`;
 
     const systemPrompt = `You are a hyper-strict email sorting bot. Assign each email a "tab" and "category".
     [VALID TABS]: Primary, Promotions, Social, Updates
     [VALID CATEGORIES]: important, work, finance, social, newsletter, ads, spam, other
-    
-    [ABSOLUTE ROUTING RULES - DO NOT VIOLATE]:
-    1. If sender is Booking.com, Airbnb, hotel, flight -> Tab: "Updates", Category: "important" or "finance".
-    2. If sender is IEEE, academic, university, school -> Tab: "Updates", Category: "work".
-    3. If sender is LinkedIn, Facebook, Instagram, TikTok -> Tab: "Social", Category: "social".
-    4. If sender is Codeforces, LeetCode, HackerRank -> Tab: "Updates", Category: "work".
-    5. If email is a direct message from a real human name -> Tab: "Primary", Category: "important".
-    6. If email contains discount, promo, sale -> Tab: "Promotions", Category: "ads".
-    ${memoryContext}
-    
-    Return ONLY JSON:
-    {"results": [{"tab": "...", "category": "..."}]}`;
+    [RULES]: Booking/flight->Updates/finance. School->Updates/work. Socials->Social/social. Humans->Primary/important. Promos->Promotions/ads. ${memoryContext}
+    Return ONLY JSON: {"results": [{"tab": "...", "category": "..."}]}`;
 
     try {
       const r=await fetch(`https://api.groq.com/openai/v1/chat/completions`,{
-        method:'POST',
-        headers:{'Content-Type':'application/json', 'Authorization': `Bearer ${cfg.groqKey}`},
-        body:JSON.stringify({
-          model: "llama-3.1-8b-instant",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: list }
-          ],
-          response_format: { type: "json_object" },
-          max_tokens: 2048
-        })
+        method:'POST', headers:{'Content-Type':'application/json', 'Authorization': `Bearer ${cfg.groqKey}`},
+        body:JSON.stringify({ model: "llama-3.1-8b-instant", messages: [ { role: "system", content: systemPrompt }, { role: "user", content: list } ], response_format: { type: "json_object" } })
       });
-      
-      if(!r.ok) {
-          chunk.forEach(()=> allCats.push({tab: 'Primary', category: 'other'}));
-          continue;
-      }
-
-      const d=await r.json();
-      const parsed = JSON.parse(d.choices[0].message.content).results || [];
-      
+      if(!r.ok) { chunk.forEach(()=> allCats.push({tab: 'Primary', category: 'other'})); continue; }
+      const d=await r.json(); const parsed = JSON.parse(d.choices[0].message.content).results || [];
       for(let j=0; j<chunk.length; j++) {
-          let t = parsed[j]?.tab;
-          let c = parsed[j]?.category;
-          if(!TABS.includes(t)) t = 'Primary';
-          if(!CAT_ORDER.includes(c)) c = 'other';
+          let t = parsed[j]?.tab; let c = parsed[j]?.category;
+          if(!TABS.includes(t)) t = 'Primary'; if(!CAT_ORDER.includes(c)) c = 'other';
           allCats.push({tab: t, category: c});
       }
-    } catch(e) {
-       chunk.forEach(()=> allCats.push({tab: 'Primary', category: 'other'}));
-    }
+    } catch(e) { chunk.forEach(()=> allCats.push({tab: 'Primary', category: 'other'})); }
   }
   return allCats;
 }
 
-// ━━━ SCAN LOGIC ━━━
-async function runScan(){
-  const btn = document.getElementById('btn-scan');
-  btn.disabled = true;
-  scanErrors = [];
-  scanIndex = 0;
-  showNextAccountPrompt();
-}
-
+// SCAN BOILERPLATE
+async function runScan(){ document.getElementById('btn-scan').disabled = true; scanErrors = []; scanIndex = 0; showNextAccountPrompt(); }
 function showNextAccountPrompt(){
-  const i = scanIndex;
-  if(i >= cfg.numAccounts){ finishScan(); return; }
-  
+  if(scanIndex >= cfg.numAccounts){ finishScan(); return; }
   const c = document.getElementById('content');
-  const skip = i > 0 ? `<button class="btn" style="margin-left:8px;" onclick="skipAccount(${i})">Skip account ${i+1}</button>` : '';
-  
-  c.innerHTML=`
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;gap:16px;">
-      <div style="font-size:40px;">📬</div>
-      <div style="font-size:18px;font-weight:600;">Connect Account ${i+1} of ${cfg.numAccounts}</div>
-      <div style="font-size:14px;color:var(--text2);max-width:360px;line-height:1.6;">
-        Click below to authenticate. Make sure you check the "Modify" permission box!
-      </div>
-      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;justify-content:center;">
-        <button class="btn btn-ink" style="width:auto;padding:12px 28px;font-size:14px;" onclick="connectAccount(${i})">Authenticate Account ${i+1} →</button>
-        ${skip}
-      </div>
+  c.innerHTML=`<div style="text-align:center;padding:60px 20px;">
+      <div style="font-size:40px;margin-bottom:16px;">📬</div><div style="font-size:18px;font-weight:600;">Connect Account ${scanIndex+1} of ${cfg.numAccounts}</div>
+      <button class="btn btn-ink" style="margin-top:16px;width:auto;" onclick="connectAccount(${scanIndex})">Authenticate & Scan →</button>
     </div>`;
 }
-
-function skipAccount(i){
-  scanIndex++;
-  showNextAccountPrompt();
-}
-
 async function connectAccount(i){
   const c = document.getElementById('content');
   try{
-    c.innerHTML=`<div class="lb"><span style="font-size:20px;">🔄</span> <div><strong>Connecting Account ${i+1}...</strong><br><small style="color:var(--text3)">Check the permission box in the popup!</small></div></div>`;
-    const tok = await gmailAuth(i);
-    tokens[i] = tok; 
-    
-    c.innerHTML=`<div class="lb"><span style="font-size:20px;">📥</span> <div><strong>Fetching threads...</strong><br><small style="color:var(--text3)">Downloading up to 100 threads securely.</small></div></div>`;
+    c.innerHTML=`<div class="lb"><span>🔄</span> Connecting Account ${i+1}...</div>`;
+    const tok = await gmailAuth(i); tokens[i] = tok; 
+    c.innerHTML=`<div class="lb"><span>📥</span> Fetching threads...</div>`;
     const pr = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:'Bearer '+tok}});
     allData[i].email = (await pr.json()).emailAddress;
-
     const emails = await gmailFetch(tok);
     if(emails.length){
-      c.innerHTML=`<div class="lb"><span style="font-size:20px;">🧠</span> <div><strong>AI is classifying...</strong><br><small style="color:var(--text3)">Sorting ${emails.length} threads into categories.</small></div></div>`;
+      c.innerHTML=`<div class="lb"><span>🧠</span> AI is classifying ${emails.length} threads...</div>`;
       const cats = await groqCategorizeBatch(emails);
       allData[i].emails = emails.map((e,j)=>({...e, tab: cats[j].tab, category: cats[j].category}));
-    } else {
-      allData[i].emails = [];
-    }
-  }catch(e){ 
-    scanErrors.push(`Account ${i+1}: ${e.message}`);
-  }
-  
-  renderSidebar();
-  scanIndex++;
-  showNextAccountPrompt(); 
+    } else allData[i].emails = [];
+  }catch(e){ scanErrors.push(`Account ${i+1}: ${e.message}`); }
+  renderSidebar(); scanIndex++; showNextAccountPrompt(); 
 }
-
 function finishScan(){
-  const btn = document.getElementById('btn-scan');
-  btn.disabled = false;
-  renderSidebar();
-  renderContent();
-  
-  if(scanErrors.length > 0) {
-      const errorDiv = document.createElement('div');
-      errorDiv.className = 'erbox';
-      errorDiv.innerHTML = `<strong>Scan Errors:</strong><br>` + scanErrors.map(err => `• ${err}`).join('<br>');
-      document.getElementById('content').prepend(errorDiv);
-  }
+  document.getElementById('btn-scan').disabled = false; renderSidebar(); renderContent();
+  if(scanErrors.length > 0) document.getElementById('content').insertAdjacentHTML('afterbegin', `<div class="erbox"><strong>Errors:</strong><br>${scanErrors.join('<br>')}</div>`);
 }
 
-// ━━━ RENDER LOGIC ━━━
+// --- RENDER LOGIC ---
 function renderSidebar(){
-  document.getElementById('sb-accs').innerHTML=allData.map((a,i)=>`
-    <div class="acc-item ${i===activeAcc?'active':''}" onclick="activeAcc=${i}; renderContent(); renderSidebar();">
-      ${a.email || 'Account '+(i+1)}
-    </div>`).join('');
-}
-
-function groupByCategory(emails) {
-  const g = {};
-  emails.forEach(e => { if(!g[e.category]) g[e.category] = []; g[e.category].push(e); });
-  return g;
+  document.getElementById('sb-accs').innerHTML=allData.map((a,i)=>`<div class="acc-item ${i===activeAcc?'active':''}" onclick="activeAcc=${i}; renderContent(); renderSidebar();">${a.email || 'Account '+(i+1)}</div>`).join('');
 }
 
 function renderContent(){
   const acc = allData[activeAcc];
-  if(!acc.emails || !acc.emails.length) { 
-      if(!document.querySelector('.erbox')) document.getElementById('content').innerHTML = '<div class="empty">No emails loaded for this account.<br><br>Click <strong>Scan</strong> above to fetch your data.</div>'; 
-      return; 
-  }
+  if(!acc.emails || !acc.emails.length) { document.getElementById('content').innerHTML = '<div class="empty">No emails loaded.<br>Click <strong>Scan Inbox</strong> above.</div>'; return; }
   
   let html = `<div class="tabs">`;
-  TABS.forEach(tab => {
-    const count = acc.emails.filter(e => e.tab === tab).length;
-    html += `<div class="tab ${activeTab===tab?'active':''}" onclick="activeTab='${tab}'; renderContent()">
-      ${tab} <span class="tab-badge">${count}</span>
-    </div>`;
-  });
-  html += `</div>`;
-
-  html += `<div class="tab-actions">
-    <div style="font-size:13px;color:var(--text2);font-weight:500;">Reviewing threads in ${activeTab}</div>
-    <button class="btn btn-del-all" onclick="deleteAllInTab(this)">🗑 Trash entire ${activeTab} Tab</button>
-  </div>`;
+  TABS.forEach(tab => { html += `<div class="tab ${activeTab===tab?'active':''}" onclick="activeTab='${tab}'; renderContent()">${tab} <span class="tab-badge">${acc.emails.filter(e => e.tab === tab).length}</span></div>`; });
+  html += `</div><div class="tab-actions"><div style="font-size:13px;color:var(--text2);font-weight:500;">Reviewing threads in ${activeTab}</div><button class="btn btn-del-all" onclick="deleteAllInTab(this)">🗑 Trash entire Tab</button></div>`;
 
   const tabEmails = acc.emails.filter(e => e.tab === activeTab);
   if(tabEmails.length === 0) html += `<div class="empty">Your ${activeTab} inbox is clear! 🎉</div>`;
   
-  const grouped = groupByCategory(tabEmails);
-  
+  const grouped = {}; tabEmails.forEach(e => { if(!grouped[e.category]) grouped[e.category] = []; grouped[e.category].push(e); });
   CAT_ORDER.forEach(cat => {
-    const list = grouped[cat];
-    if(!list || !list.length) return;
+    const list = grouped[cat]; if(!list || !list.length) return;
+    const cfg2 = CATS[cat]; const open = list.length > 0; 
     
-    const cfg2 = CATS[cat];
-    const open = list.length > 0; 
-    
-    html += `
-      <div class="cb">
-        <div class="ch ${open?'open':''}" onclick="togCat(this)">
-          <div class="chl">
-            <span class="ctag" style="background:${cfg2.bg};color:${cfg2.c}">${cfg2.e} ${cfg2.label}</span>
-            <span class="cn">${list.length} thread${list.length>1?'s':''}</span>
-          </div>
-          <span class="chev ${open?'open':''}">▶</span>
-        </div>
-        <div class="ep ${open?'open':''}">`;
+    html += `<div class="cb"><div class="ch ${open?'open':''}" onclick="this.classList.toggle('open'); this.nextElementSibling.classList.toggle('open'); this.querySelector('.chev').classList.toggle('open');">
+        <div class="chl"><span class="ctag" style="background:${cfg2.bg};color:${cfg2.c}">${cfg2.e} ${cfg2.label}</span><span class="cn">${list.length} threads</span></div><span class="chev ${open?'open':''}">▶</span>
+      </div><div class="ep ${open?'open':''}">`;
 
     list.forEach(e => {
-      const threadBadge = e.count > 1 ? `<span class="t-badge">${e.count} msgs</span>` : '';
-      
+      // Note the e.stopPropagation() on buttons to prevent opening the email when interacting with actions
       html += `
-        <div class="er" id="em-${e.id}">
-          <div class="e-info" onclick="this.classList.toggle('expanded')" title="Click to read full preview">
-            <div class="ef">${e.from} ${threadBadge}</div>
+        <div class="er" id="em-${e.id}" onclick="readEmail('${e.id}', '${e.msgId}', '${e.from.replace(/'/g,"\\'")}', '${e.subject.replace(/'/g,"\\'")}')">
+          <div class="e-info">
+            <div class="ef">${e.from} ${e.count > 1 ? `<span class="t-badge">${e.count} msgs</span>` : ''}</div>
             <div class="es">${e.subject}</div>
-            <div class="eq snippet-short">${e.snippet.substring(0,80)}... <span style="color:var(--blue);font-weight:500;">(Read more)</span></div>
-            <div class="eq snippet-full">${e.snippet}</div>
+            <div class="eq">${e.snippet.substring(0,85)}...</div>
           </div>
           <div class="er2">
-            <button class="eb2 kp" onclick="keepSingle('${e.id}', '${e.from.replace(/'/g,"")}', this)">Keep</button>
-            <button class="eb2 dl" onclick="deleteSingle('${e.id}', '${e.from.replace(/'/g,"")}', this)">Trash</button>
+            <button class="eb2 kp" onclick="event.stopPropagation(); actionSingle('${e.id}', '${e.from.replace(/'/g,"\\'")}', 'keep', this)">Keep</button>
+            <button class="eb2 rp" onclick="event.stopPropagation(); openReply('${e.msgId}', '${e.rawFrom.replace(/'/g,"\\'")}', '${e.subject.replace(/'/g,"\\'")}')">Reply</button>
+            <button class="eb2 dl" onclick="event.stopPropagation(); actionSingle('${e.id}', '${e.from.replace(/'/g,"\\'")}', 'trash', this)">Trash</button>
           </div>
         </div>`;
     });
     html += `</div></div>`;
   });
-
   const existingError = document.querySelector('.erbox');
   document.getElementById('content').innerHTML = html;
   if(existingError) document.getElementById('content').prepend(existingError);
 }
 
-function togCat(h){
-  const p = h.nextElementSibling, cv = h.querySelector('.chev');
-  h.classList.toggle('open'); p.classList.toggle('open'); cv.classList.toggle('open');
+// --- FULL EMAIL & REPLY LOGIC ---
+
+// Helper to extract email body recursively from parts
+function extractBody(payload) {
+  let body = '';
+  if (payload.body && payload.body.size > 0) { return decodeBase64(payload.body.data); }
+  if (payload.parts) {
+    let htmlPart = payload.parts.find(p => p.mimeType === 'text/html');
+    let textPart = payload.parts.find(p => p.mimeType === 'text/plain');
+    if (htmlPart) return extractBody(htmlPart);
+    if (textPart) return extractBody(textPart);
+    // If multipart/alternative etc, recurse
+    for(let part of payload.parts) {
+      let b = extractBody(part);
+      if(b) return b;
+    }
+  }
+  return body;
 }
 
-// ━━━ ACTIONS (TRASHING THREADS) ━━━
+async function readEmail(threadId, msgId, from, subject) {
+  document.getElementById('read-modal').classList.add('open');
+  document.getElementById('rd-subj').textContent = subject;
+  document.getElementById('rd-from').textContent = from;
+  document.getElementById('rd-loader').style.display = 'flex';
+  const iframe = document.getElementById('rd-frame');
+  iframe.srcdoc = ''; // clear old
 
-function keepSingle(id, sender, btn){
+  try {
+    const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}?format=full`, { headers: {'Authorization': 'Bearer ' + tokens[activeAcc]} });
+    if(!r.ok) throw new Error("Failed to fetch");
+    const data = await r.json();
+    let html = extractBody(data.payload);
+    
+    // Fallback if empty
+    if(!html) html = `<div style="padding:20px; font-family:sans-serif;"><i>This email contains no readable text or HTML.</i></div>`;
+    
+    // Inject styling to make raw text wrap nicely if it's not HTML
+    if(!html.includes('<html') && !html.includes('<body') && !html.includes('<div')) {
+      html = `<div style="padding:20px; font-family:sans-serif; white-space:pre-wrap; font-size:14px; color:#18170f;">${html}</div>`;
+    }
+
+    iframe.srcdoc = html;
+  } catch(e) {
+    iframe.srcdoc = `<div style="padding:20px; font-family:sans-serif; color:red;">Failed to load email securely. ${e.message}</div>`;
+  }
+  document.getElementById('rd-loader').style.display = 'none';
+}
+
+// --- AI REPLY GENERATION & SENDING ---
+let currentReplyContext = {};
+
+async function openReply(msgId, rawFrom, subject) {
+  document.getElementById('reply-modal').classList.add('open');
+  document.getElementById('rp-loader').style.display = 'flex';
+  
+  // Format reply subject
+  let repSubj = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
+  document.getElementById('rp-subj').value = repSubj;
+  
+  // Extract email address neatly if it's formatted like "Name <email@domain.com>"
+  let toEmail = rawFrom;
+  const emailMatch = rawFrom.match(/<([^>]+)>/);
+  if(emailMatch) toEmail = emailMatch[1];
+  document.getElementById('rp-to').textContent = `To: ${rawFrom}`;
+  document.getElementById('rp-body').value = '';
+
+  currentReplyContext = { msgId, toEmail, repSubj };
+
+  try {
+    // 1. Fetch the actual message to feed to AI
+    const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}?format=full`, { headers: {'Authorization': 'Bearer ' + tokens[activeAcc]} });
+    const data = await r.json();
+    let originalText = extractBody(data.payload).replace(/<[^>]+>/g, '').substring(0, 3000); // strip HTML and truncate for AI speed
+    
+    // Get Message-ID for threading
+    const msgIdHeader = data.payload.headers.find(h => h.name.toLowerCase() === 'message-id')?.value;
+    currentReplyContext.threadId = data.threadId;
+    currentReplyContext.inReplyTo = msgIdHeader;
+
+    // 2. Ask Groq to draft a reply
+    const prompt = `You are the user's smart email assistant. Draft a polite, concise, professional reply to the following email. ONLY output the message body text. No greetings if not necessary, and NO subject line.\n\nEmail Content:\n${originalText}`;
+    
+    const groqRes = await fetch(`https://api.groq.com/openai/v1/chat/completions`,{
+        method:'POST', headers:{'Content-Type':'application/json', 'Authorization': `Bearer ${cfg.groqKey}`},
+        body:JSON.stringify({ model: "llama-3.1-8b-instant", messages: [{role:"user", content:prompt}], max_tokens: 500 })
+    });
+    
+    if(groqRes.ok) {
+      const groqData = await groqRes.json();
+      document.getElementById('rp-body').value = groqData.choices[0].message.content.trim();
+    } else {
+      document.getElementById('rp-body').placeholder = "AI drafting failed. Type your reply here...";
+    }
+  } catch(e) {
+    document.getElementById('rp-body').placeholder = "Could not fetch original email. Type your reply manually...";
+  }
+
+  document.getElementById('rp-loader').style.display = 'none';
+
+  // Attach dynamic send event
+  document.getElementById('rp-send-btn').onclick = () => sendEmailReply();
+}
+
+async function sendEmailReply() {
+  const btn = document.getElementById('rp-send-btn');
+  const body = document.getElementById('rp-body').value;
+  const subj = document.getElementById('rp-subj').value;
+  
+  if(!body.trim()) { alert('Please enter a message to send.'); return; }
+  
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  // Construct raw RFC 2822 Email
+  const makeEmail = () => {
+    let str = `To: ${currentReplyContext.toEmail}\r\n` +
+              `Subject: ${subj}\r\n`;
+    if(currentReplyContext.inReplyTo) {
+      str += `In-Reply-To: ${currentReplyContext.inReplyTo}\r\n` +
+             `References: ${currentReplyContext.inReplyTo}\r\n`;
+    }
+    str += `Content-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`;
+    // Base64Url encode
+    return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  };
+
+  try {
+    const raw = makeEmail();
+    const r = await fetch(`https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + tokens[activeAcc], 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw: raw, threadId: currentReplyContext.threadId })
+    });
+
+    if(!r.ok) throw new Error('Send blocked. Did you grant mail.google.com permissions?');
+    
+    btn.textContent = 'Sent! ✅';
+    setTimeout(() => { 
+      closeModal('reply-modal'); 
+      btn.disabled = false; 
+      btn.textContent = 'Send Reply 🚀'; 
+    }, 1500);
+
+  } catch(e) {
+    alert(`Failed to send: ${e.message}`);
+    btn.disabled = false;
+    btn.textContent = 'Send Reply 🚀';
+  }
+}
+
+// --- BASIC ACTIONS (Trash / Keep) ---
+async function actionSingle(id, sender, action, btn){
   const acc = allData[activeAcc];
-  learnAction(sender, 'keep'); 
+  if(action === 'trash') {
+    btn.disabled = true; btn.textContent = 'Trashing...';
+    try {
+      const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${id}/trash`, {
+        method: 'POST', headers: { 'Authorization': 'Bearer ' + tokens[activeAcc] }
+      });
+      if(!r.ok) throw new Error('API Error');
+    } catch(e) { alert('Trash failed.'); btn.disabled = false; btn.textContent = 'Trash'; return; }
+  }
+  
+  // Update memory
+  if(sender && sender !== 'Unknown') {
+    if(action === 'trash') {
+      memory.kept = memory.kept.filter(s => s !== sender);
+      if(!memory.trashed.includes(sender)) memory.trashed.push(sender);
+    } else {
+      memory.trashed = memory.trashed.filter(s => s !== sender);
+      if(!memory.kept.includes(sender)) memory.kept.push(sender);
+    }
+    if(memory.trashed.length > 40) memory.trashed.shift();
+    if(memory.kept.length > 40) memory.kept.shift();
+    localStorage.setItem('ea_memory', JSON.stringify(memory));
+  }
+
   document.getElementById('em-'+id).style.display = 'none';
   acc.emails = acc.emails.filter(e => e.id !== id);
   renderSidebar(); 
-}
-
-async function deleteSingle(id, sender, btn){
-  const acc = allData[activeAcc];
-  btn.disabled = true;
-  btn.textContent = 'Trashing...';
-
-  try {
-    const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${id}/trash`, {
-      method: 'POST',
-      headers: { 
-          'Authorization': 'Bearer ' + tokens[activeAcc],
-          'Content-Type': 'application/json' 
-      },
-      body: JSON.stringify({})
-    });
-    
-    if(!r.ok) {
-        const err = await r.json();
-        throw new Error(err.error?.message || 'API Error');
-    }
-
-    learnAction(sender, 'trash'); 
-    document.getElementById('em-'+id).style.display = 'none';
-    acc.emails = acc.emails.filter(e => e.id !== id);
-    renderSidebar(); 
-  } catch(e) {
-    alert(`Failed to trash. Google error: ${e.message}\n\nYou likely did not check the "Modify" checkbox during Google Login!`);
-    btn.disabled = false;
-    btn.textContent = 'Trash';
-  }
 }
 
 async function deleteAllInTab(btn){
   const acc = allData[activeAcc];
   const toDelete = acc.emails.filter(e => e.tab === activeTab);
   if(toDelete.length === 0) return;
+  if(!confirm(`Trash ${toDelete.length} threads?`)) return;
   
-  if(!confirm(`Move ${toDelete.length} threads from ${activeTab} directly to your Gmail Trash?`)) return;
-  
-  btn.disabled = true;
-  const originalText = btn.textContent;
-  btn.textContent = 'Moving to Trash...';
-  
+  btn.disabled = true; const originalText = btn.textContent; btn.textContent = 'Moving to Trash...';
   try {
     let hasError = false;
     await Promise.all(toDelete.map(async (e) => {
       const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${e.id}/trash`, {
-        method: 'POST',
-        headers: { 
-            'Authorization': 'Bearer ' + tokens[activeAcc],
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({})
+        method: 'POST', headers: { 'Authorization': 'Bearer ' + tokens[activeAcc] }
       });
       if(!r.ok) hasError = true;
-      else learnAction(e.from, 'trash');
+      else if(e.from !== 'Unknown') {
+          memory.kept = memory.kept.filter(s => s !== e.from);
+          if(!memory.trashed.includes(e.from)) memory.trashed.push(e.from);
+      }
     }));
-    
-    if(hasError) throw new Error("Some requests were blocked by Google API permissions.");
+    if(hasError) throw new Error("Some requests blocked.");
+    if(memory.trashed.length > 40) memory.trashed = memory.trashed.slice(-40);
+    localStorage.setItem('ea_memory', JSON.stringify(memory));
 
     acc.emails = acc.emails.filter(e => e.tab !== activeTab);
-    renderContent();
-    renderSidebar();
-  } catch(e) {
-    alert(`Failed: ${e.message}\n\nDid you check the "Modify" checkbox during login?`);
-    btn.disabled = false;
-    btn.textContent = originalText;
-  }
+    renderContent(); renderSidebar();
+  } catch(e) { alert(`Failed: ${e.message}`); btn.disabled = false; btn.textContent = originalText; }
 }
 </script>
 </body>
