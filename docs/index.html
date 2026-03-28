@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Email Agent (Live Delete)</title>
+<title>Email Agent (Live Delete + Error Fix)</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✉️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -45,6 +45,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 .btn-ink{background:var(--ink);color:#fff;width:100%;padding:13px;font-size:14px;}
 .btn-ink:hover:not(:disabled){background:var(--ink2);}
 .err{font-size:12px;color:var(--red);margin-top:8px;padding:8px 12px;background:var(--red-bg);border-radius:8px;display:none;}
+.erbox{background:var(--red-bg);border:1px solid var(--red-b);border-radius:var(--radius);padding:14px 18px;font-size:13px;color:var(--red);margin-bottom:14px;line-height:1.6;}
 
 /* ━━━ APP SHELL ━━━ */
 #app{display:none;flex-direction:column;min-height:100vh;}
@@ -192,13 +193,12 @@ function learnDelete(sender) {
 
 function gmailAuth(idx){
   return new Promise((res,rej)=>{
-    // UPGRADED PERMISSION TO ALLOW DELETION (TRASH)
     const scope='https://www.googleapis.com/auth/gmail.modify';
     const redir=location.href.split('?')[0].split('#')[0];
     const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(cfg.clientId)}&redirect_uri=${encodeURIComponent(redir)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=select_account`;
     const pop=window.open(url,'ga'+idx,'width=500,height=600,left=300,top=80');
     const t=setInterval(()=>{
-      if(!pop||pop.closed){clearInterval(t);rej(new Error('Auth closed'));}
+      if(!pop||pop.closed){clearInterval(t);rej(new Error('Auth window closed manually.'));}
       try{
         if(pop.location.href.includes('access_token=')){
           clearInterval(t); pop.close();
@@ -209,9 +209,15 @@ function gmailAuth(idx){
   });
 }
 
-// Fetches 100 emails, safely chunking
 async function gmailFetch(token){
   const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=in:inbox', {headers:{Authorization:'Bearer '+token}});
+  
+  // FIX: Explicitly catch and throw Google API errors so they don't fail silently
+  if(!r.ok) {
+    const errData = await r.json();
+    throw new Error(`Google API blocked the request. Did you check the permission box during login? Details: ${errData.error?.message || r.status}`);
+  }
+  
   const d=await r.json();
   if(!d.messages) return [];
   
@@ -255,6 +261,12 @@ async function groqCategorizeBatch(emails){
       })
     });
     
+    // FIX: Catch Groq specific API errors
+    if(!r.ok) {
+        const errText = await r.text();
+        throw new Error(`Groq API Error: ${errText}`);
+    }
+
     const d=await r.json();
     try {
       const parsed = JSON.parse(d.choices[0].message.content).results || [];
@@ -270,12 +282,13 @@ async function runScan(){
   const btn = document.getElementById('btn-scan');
   btn.disabled = true;
   const c = document.getElementById('content');
+  let scanErrors = []; // Array to hold the real errors
   
   for(let i=0; i<cfg.numAccounts; i++){
     try{
-      c.innerHTML=`<div class="lb">Connecting Account ${i+1}...</div>`;
+      c.innerHTML=`<div class="lb">Connecting Account ${i+1}... (Make sure to check the permission boxes!)</div>`;
       const tok = await gmailAuth(i);
-      tokens[i] = tok; // Save token for deleting later
+      tokens[i] = tok; 
       
       c.innerHTML=`<div class="lb">Fetching 100 emails securely from Google...</div>`;
       const pr = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:'Bearer '+tok}});
@@ -287,11 +300,23 @@ async function runScan(){
         const cats = await groqCategorizeBatch(emails);
         allData[i].emails = emails.map((e,j)=>({...e, category: cats[j]?.category || 'Primary'}));
       }
-    }catch(e){ console.error(e); }
+    }catch(e){ 
+      console.error(e); 
+      scanErrors.push(`Account ${i+1}: ${e.message}`);
+    }
   }
+  
   btn.disabled = false;
   renderSidebar();
   renderContent();
+  
+  // Display errors if any happened!
+  if(scanErrors.length > 0) {
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'erbox';
+      errorDiv.innerHTML = `<strong>Scan Errors:</strong><br>` + scanErrors.map(err => `• ${err}`).join('<br>');
+      document.getElementById('content').prepend(errorDiv);
+  }
 }
 
 function renderSidebar(){
@@ -303,7 +328,13 @@ function renderSidebar(){
 
 function renderContent(){
   const acc = allData[activeAcc];
-  if(!acc.emails.length) { document.getElementById('content').innerHTML = '<div class="empty">No emails loaded. Hit Scan!</div>'; return; }
+  if(!acc.emails || !acc.emails.length) { 
+      // If content was already overwritten by an error message, don't clear it.
+      if(!document.querySelector('.erbox')) {
+          document.getElementById('content').innerHTML = '<div class="empty">No emails loaded. Hit Scan!</div>'; 
+      }
+      return; 
+  }
   
   let html = `<div class="tabs">`;
   TABS.forEach(tab => {
@@ -333,10 +364,12 @@ function renderContent(){
     </div>`;
   });
 
+  // Preserve the error box if it exists when re-rendering
+  const existingError = document.querySelector('.erbox');
   document.getElementById('content').innerHTML = html;
+  if(existingError) document.getElementById('content').prepend(existingError);
 }
 
-// LIVE GOOGLE TRASH COMMAND - SINGLE
 async function deleteSingle(id, btn){
   const acc = allData[activeAcc];
   const email = acc.emails.find(e => e.id === id);
@@ -364,7 +397,6 @@ async function deleteSingle(id, btn){
   }
 }
 
-// LIVE GOOGLE TRASH COMMAND - BULK
 async function deleteAllInTab(btn){
   const acc = allData[activeAcc];
   const toDelete = acc.emails.filter(e => e.category === activeTab);
@@ -377,7 +409,6 @@ async function deleteAllInTab(btn){
   btn.textContent = 'Moving to Trash...';
   
   try {
-    // Send trash requests to Google simultaneously
     await Promise.all(toDelete.map(async (e) => {
       await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${e.id}/trash`, {
         method: 'POST',
