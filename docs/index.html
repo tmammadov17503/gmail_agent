@@ -311,7 +311,6 @@ function resetApp(){ localStorage.clear(); location.reload(); }
 function clearMemory(){ memory = {trashed: [], kept: []}; localStorage.setItem('ea_memory', JSON.stringify(memory)); alert('AI Memory wiped.'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-// robust base64url decode
 function decodeBase64(str) {
   try {
     let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
@@ -320,10 +319,9 @@ function decodeBase64(str) {
   } catch(e) { return "Error decoding email content."; }
 }
 
-// --- AUTH (Includes Send Scope!) ---
+// --- AUTH ---
 function gmailAuth(idx){
   return new Promise((res,rej)=>{
-    // Added mail.google.com for full access to reply and modify
     const scope='https://mail.google.com/';
     const redir=location.href.split('?')[0].split('#')[0];
     const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(cfg.clientId)}&redirect_uri=${encodeURIComponent(redir)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=consent%20select_account`;
@@ -342,7 +340,7 @@ function gmailAuth(idx){
   });
 }
 
-// --- SCANNING ---
+// --- CORE FETCHING & AI CATEGORIZATION ---
 async function gmailFetch(token){
   const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=100&q=in:inbox', {headers:{Authorization:'Bearer '+token}});
   if(!r.ok) throw new Error('API request blocked. Check Permissions.');
@@ -366,7 +364,7 @@ async function gmailFetch(token){
       
       return { 
         id: t.id, 
-        msgId: lastMsg.id, // Need specific message ID to fetch full body later
+        msgId: lastMsg.id, 
         count: t.messages.length,
         time: parseInt(lastMsg.internalDate, 10) || 0, 
         rawFrom: getH(lastMsg, 'From'),
@@ -378,7 +376,6 @@ async function gmailFetch(token){
   return processed.sort((a, b) => b.time - a.time);
 }
 
-// --- STRICT AI CATEGORIZATION ---
 async function groqCategorizeBatch(emails){
   let allCats = [];
   const BATCH_SIZE = 25; 
@@ -389,7 +386,7 @@ async function groqCategorizeBatch(emails){
     if(memory.trashed.length > 0) memoryContext += `\nTrashed senders: ${memory.trashed.join(', ')} -> Tab MUST be 'Promotions', Category 'spam'.`;
     if(memory.kept.length > 0) memoryContext += `\nKept senders: ${memory.kept.join(', ')} -> Tab MUST be 'Primary', Category 'important'.`;
 
-    const systemPrompt = `You are a hyper-strict email sorting bot. Assign each email a "tab" and "category".
+    const systemPrompt = `You are a strict email sorting bot. Assign each email a "tab" and "category".
     [VALID TABS]: Primary, Promotions, Social, Updates
     [VALID CATEGORIES]: important, work, finance, social, newsletter, ads, spam, other
     [RULES]: Booking/flight->Updates/finance. School->Updates/work. Socials->Social/social. Humans->Primary/important. Promos->Promotions/ads. ${memoryContext}
@@ -412,46 +409,131 @@ async function groqCategorizeBatch(emails){
   return allCats;
 }
 
-// SCAN BOILERPLATE
-async function runScan(){ document.getElementById('btn-scan').disabled = true; scanErrors = []; scanIndex = 0; showNextAccountPrompt(); }
-function showNextAccountPrompt(){
-  if(scanIndex >= cfg.numAccounts){ finishScan(); return; }
+// Core unified fetch routine
+async function fetchAndCategorize(i) {
   const c = document.getElementById('content');
-  c.innerHTML=`<div style="text-align:center;padding:60px 20px;">
-      <div style="font-size:40px;margin-bottom:16px;">📬</div><div style="font-size:18px;font-weight:600;">Connect Account ${scanIndex+1} of ${cfg.numAccounts}</div>
-      <button class="btn btn-ink" style="margin-top:16px;width:auto;" onclick="connectAccount(${scanIndex})">Authenticate & Scan →</button>
-    </div>`;
+  c.innerHTML=`<div class="lb"><span>📥</span> <div><strong>Account ${i+1}: Fetching threads...</strong><br><small style="color:var(--text3)">Downloading securely from Gmail.</small></div></div>`;
+  const pr = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:'Bearer '+tokens[i]}});
+  allData[i].email = (await pr.json()).emailAddress;
+  
+  const emails = await gmailFetch(tokens[i]);
+  if(emails.length){
+    c.innerHTML=`<div class="lb"><span>🧠</span> <div><strong>Account ${i+1}: AI is classifying...</strong><br><small style="color:var(--text3)">Sorting ${emails.length} threads.</small></div></div>`;
+    const cats = await groqCategorizeBatch(emails);
+    allData[i].emails = emails.map((e,j)=>({...e, tab: cats[j].tab, category: cats[j].category}));
+  } else {
+    allData[i].emails = [];
+  }
 }
-async function connectAccount(i){
+
+// --- SCANNING WORKFLOW ---
+async function runScan() { 
+  document.getElementById('btn-scan').disabled = true; 
+  scanErrors = []; 
+  scanIndex = 0; 
+  processNextScan(); 
+}
+
+async function processNextScan() {
+  if(scanIndex >= cfg.numAccounts) { finishScan(); return; }
+  const i = scanIndex;
   const c = document.getElementById('content');
-  try{
-    c.innerHTML=`<div class="lb"><span>🔄</span> Connecting Account ${i+1}...</div>`;
-    const tok = await gmailAuth(i); tokens[i] = tok; 
-    c.innerHTML=`<div class="lb"><span>📥</span> Fetching threads...</div>`;
-    const pr = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:'Bearer '+tok}});
-    allData[i].email = (await pr.json()).emailAddress;
-    const emails = await gmailFetch(tok);
-    if(emails.length){
-      c.innerHTML=`<div class="lb"><span>🧠</span> AI is classifying ${emails.length} threads...</div>`;
-      const cats = await groqCategorizeBatch(emails);
-      allData[i].emails = emails.map((e,j)=>({...e, tab: cats[j].tab, category: cats[j].category}));
-    } else allData[i].emails = [];
-  }catch(e){ scanErrors.push(`Account ${i+1}: ${e.message}`); }
-  renderSidebar(); scanIndex++; showNextAccountPrompt(); 
+  
+  if (tokens[i]) {
+    // If we already authenticated this account previously, skip the prompt and just refresh!
+    try {
+      await fetchAndCategorize(i);
+    } catch(e) { scanErrors.push(`Account ${i+1}: ${e.message}`); }
+    scanIndex++;
+    processNextScan();
+  } else {
+    // Ask to authenticate
+    c.innerHTML=`
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;">
+        <div style="font-size:40px;margin-bottom:16px;">📬</div>
+        <div style="font-size:18px;font-weight:600;">Connect Account ${i+1} of ${cfg.numAccounts}</div>
+        <div style="font-size:14px;color:var(--text2);margin-bottom:24px;">Authenticate so AI can scan this inbox.</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn btn-ink" onclick="authAndContinue(${i})">Authenticate & Scan</button>
+          <button class="btn" onclick="skipScan(${i})">Skip for now</button>
+        </div>
+      </div>`;
+  }
 }
-function finishScan(){
-  document.getElementById('btn-scan').disabled = false; renderSidebar(); renderContent();
+
+async function authAndContinue(i) {
+  try {
+    document.getElementById('content').innerHTML=`<div class="lb"><span>🔄</span> Authenticating Account ${i+1}...</div>`;
+    tokens[i] = await gmailAuth(i);
+    await fetchAndCategorize(i);
+  } catch(e) { scanErrors.push(`Account ${i+1}: ${e.message}`); }
+  scanIndex++;
+  processNextScan();
+}
+
+function skipScan(i) { scanIndex++; processNextScan(); }
+
+function finishScan() {
+  document.getElementById('btn-scan').disabled = false; 
+  renderSidebar(); 
+  renderContent();
   if(scanErrors.length > 0) document.getElementById('content').insertAdjacentHTML('afterbegin', `<div class="erbox"><strong>Errors:</strong><br>${scanErrors.join('<br>')}</div>`);
 }
 
-// --- RENDER LOGIC ---
+// --- SINGLE ACCOUNT ON-DEMAND AUTH (New Feature) ---
+async function authSingleAccount(i) {
+  try {
+    document.getElementById('content').innerHTML=`<div class="lb"><span>🔄</span> Authenticating Account ${i+1}...</div>`;
+    tokens[i] = await gmailAuth(i);
+    await fetchAndCategorize(i);
+    renderSidebar(); renderContent();
+  } catch(e) {
+    document.getElementById('content').innerHTML=`<div class="erbox">Auth Failed: ${e.message}</div>`;
+    setTimeout(renderContent, 3000);
+  }
+}
+
+async function refreshSingleAccount(i) {
+  try {
+    await fetchAndCategorize(i);
+    renderSidebar(); renderContent();
+  } catch(e) {
+    document.getElementById('content').innerHTML=`<div class="erbox">Refresh Failed: ${e.message}</div>`;
+    setTimeout(renderContent, 3000);
+  }
+}
+
+// --- RENDER UI ---
 function renderSidebar(){
   document.getElementById('sb-accs').innerHTML=allData.map((a,i)=>`<div class="acc-item ${i===activeAcc?'active':''}" onclick="activeAcc=${i}; renderContent(); renderSidebar();">${a.email || 'Account '+(i+1)}</div>`).join('');
 }
 
 function renderContent(){
   const acc = allData[activeAcc];
-  if(!acc.emails || !acc.emails.length) { document.getElementById('content').innerHTML = '<div class="empty">No emails loaded.<br>Click <strong>Scan Inbox</strong> above.</div>'; return; }
+  
+  // Smart Empty State 1: Account not connected yet
+  if (!tokens[activeAcc]) {
+      document.getElementById('content').innerHTML = `
+          <div class="empty" style="padding:60px 20px;">
+              <div style="font-size:36px;margin-bottom:12px;">🔐</div>
+              <h3 style="margin-bottom:8px;">Account ${activeAcc + 1} is disconnected</h3>
+              <p style="color:var(--text3);margin-bottom:20px;font-size:13px;">Authenticate to view and manage this inbox.</p>
+              <button class="btn btn-ink" style="width:auto;padding:10px 20px;" onclick="authSingleAccount(${activeAcc})">Connect Account ${activeAcc + 1}</button>
+          </div>`;
+      return;
+  }
+  
+  // Smart Empty State 2: Account connected but no emails
+  if(!acc.emails || !acc.emails.length) { 
+      document.getElementById('content').innerHTML = `
+          <div class="empty" style="padding:60px 20px;">
+              <div style="font-size:36px;margin-bottom:12px;">📭</div>
+              <h3 style="margin-bottom:8px;">No emails loaded</h3>
+              <p style="color:var(--text3);margin-bottom:20px;font-size:13px;">This inbox is empty or hasn't been scanned yet.</p>
+              <button class="btn" onclick="refreshSingleAccount(${activeAcc})">↻ Refresh Inbox</button>
+          </div>`; 
+      return; 
+  }
   
   let html = `<div class="tabs">`;
   TABS.forEach(tab => { html += `<div class="tab ${activeTab===tab?'active':''}" onclick="activeTab='${tab}'; renderContent()">${tab} <span class="tab-badge">${acc.emails.filter(e => e.tab === tab).length}</span></div>`; });
@@ -470,7 +552,6 @@ function renderContent(){
       </div><div class="ep ${open?'open':''}">`;
 
     list.forEach(e => {
-      // Note the e.stopPropagation() on buttons to prevent opening the email when interacting with actions
       html += `
         <div class="er" id="em-${e.id}" onclick="readEmail('${e.id}', '${e.msgId}', '${e.from.replace(/'/g,"\\'")}', '${e.subject.replace(/'/g,"\\'")}')">
           <div class="e-info">
@@ -487,14 +568,13 @@ function renderContent(){
     });
     html += `</div></div>`;
   });
+  
   const existingError = document.querySelector('.erbox');
   document.getElementById('content').innerHTML = html;
   if(existingError) document.getElementById('content').prepend(existingError);
 }
 
 // --- FULL EMAIL & REPLY LOGIC ---
-
-// Helper to extract email body recursively from parts
 function extractBody(payload) {
   let body = '';
   if (payload.body && payload.body.size > 0) { return decodeBase64(payload.body.data); }
@@ -503,7 +583,6 @@ function extractBody(payload) {
     let textPart = payload.parts.find(p => p.mimeType === 'text/plain');
     if (htmlPart) return extractBody(htmlPart);
     if (textPart) return extractBody(textPart);
-    // If multipart/alternative etc, recurse
     for(let part of payload.parts) {
       let b = extractBody(part);
       if(b) return b;
@@ -518,7 +597,7 @@ async function readEmail(threadId, msgId, from, subject) {
   document.getElementById('rd-from').textContent = from;
   document.getElementById('rd-loader').style.display = 'flex';
   const iframe = document.getElementById('rd-frame');
-  iframe.srcdoc = ''; // clear old
+  iframe.srcdoc = ''; 
 
   try {
     const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}?format=full`, { headers: {'Authorization': 'Bearer ' + tokens[activeAcc]} });
@@ -526,14 +605,10 @@ async function readEmail(threadId, msgId, from, subject) {
     const data = await r.json();
     let html = extractBody(data.payload);
     
-    // Fallback if empty
     if(!html) html = `<div style="padding:20px; font-family:sans-serif;"><i>This email contains no readable text or HTML.</i></div>`;
-    
-    // Inject styling to make raw text wrap nicely if it's not HTML
     if(!html.includes('<html') && !html.includes('<body') && !html.includes('<div')) {
       html = `<div style="padding:20px; font-family:sans-serif; white-space:pre-wrap; font-size:14px; color:#18170f;">${html}</div>`;
     }
-
     iframe.srcdoc = html;
   } catch(e) {
     iframe.srcdoc = `<div style="padding:20px; font-family:sans-serif; color:red;">Failed to load email securely. ${e.message}</div>`;
@@ -541,18 +616,16 @@ async function readEmail(threadId, msgId, from, subject) {
   document.getElementById('rd-loader').style.display = 'none';
 }
 
-// --- AI REPLY GENERATION & SENDING ---
+// --- AI REPLY ---
 let currentReplyContext = {};
 
 async function openReply(msgId, rawFrom, subject) {
   document.getElementById('reply-modal').classList.add('open');
   document.getElementById('rp-loader').style.display = 'flex';
   
-  // Format reply subject
   let repSubj = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
   document.getElementById('rp-subj').value = repSubj;
   
-  // Extract email address neatly if it's formatted like "Name <email@domain.com>"
   let toEmail = rawFrom;
   const emailMatch = rawFrom.match(/<([^>]+)>/);
   if(emailMatch) toEmail = emailMatch[1];
@@ -562,17 +635,14 @@ async function openReply(msgId, rawFrom, subject) {
   currentReplyContext = { msgId, toEmail, repSubj };
 
   try {
-    // 1. Fetch the actual message to feed to AI
     const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}?format=full`, { headers: {'Authorization': 'Bearer ' + tokens[activeAcc]} });
     const data = await r.json();
-    let originalText = extractBody(data.payload).replace(/<[^>]+>/g, '').substring(0, 3000); // strip HTML and truncate for AI speed
+    let originalText = extractBody(data.payload).replace(/<[^>]+>/g, '').substring(0, 3000); 
     
-    // Get Message-ID for threading
     const msgIdHeader = data.payload.headers.find(h => h.name.toLowerCase() === 'message-id')?.value;
     currentReplyContext.threadId = data.threadId;
     currentReplyContext.inReplyTo = msgIdHeader;
 
-    // 2. Ask Groq to draft a reply
     const prompt = `You are the user's smart email assistant. Draft a polite, concise, professional reply to the following email. ONLY output the message body text. No greetings if not necessary, and NO subject line.\n\nEmail Content:\n${originalText}`;
     
     const groqRes = await fetch(`https://api.groq.com/openai/v1/chat/completions`,{
@@ -583,16 +653,10 @@ async function openReply(msgId, rawFrom, subject) {
     if(groqRes.ok) {
       const groqData = await groqRes.json();
       document.getElementById('rp-body').value = groqData.choices[0].message.content.trim();
-    } else {
-      document.getElementById('rp-body').placeholder = "AI drafting failed. Type your reply here...";
-    }
-  } catch(e) {
-    document.getElementById('rp-body').placeholder = "Could not fetch original email. Type your reply manually...";
-  }
+    } else { document.getElementById('rp-body').placeholder = "AI drafting failed. Type your reply here..."; }
+  } catch(e) { document.getElementById('rp-body').placeholder = "Could not fetch original email. Type your reply manually..."; }
 
   document.getElementById('rp-loader').style.display = 'none';
-
-  // Attach dynamic send event
   document.getElementById('rp-send-btn').onclick = () => sendEmailReply();
 }
 
@@ -603,44 +667,25 @@ async function sendEmailReply() {
   
   if(!body.trim()) { alert('Please enter a message to send.'); return; }
   
-  btn.disabled = true;
-  btn.textContent = 'Sending...';
+  btn.disabled = true; btn.textContent = 'Sending...';
 
-  // Construct raw RFC 2822 Email
   const makeEmail = () => {
-    let str = `To: ${currentReplyContext.toEmail}\r\n` +
-              `Subject: ${subj}\r\n`;
-    if(currentReplyContext.inReplyTo) {
-      str += `In-Reply-To: ${currentReplyContext.inReplyTo}\r\n` +
-             `References: ${currentReplyContext.inReplyTo}\r\n`;
-    }
+    let str = `To: ${currentReplyContext.toEmail}\r\nSubject: ${subj}\r\n`;
+    if(currentReplyContext.inReplyTo) { str += `In-Reply-To: ${currentReplyContext.inReplyTo}\r\nReferences: ${currentReplyContext.inReplyTo}\r\n`; }
     str += `Content-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`;
-    // Base64Url encode
     return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   };
 
   try {
-    const raw = makeEmail();
     const r = await fetch(`https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send`, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + tokens[activeAcc], 'Content-Type': 'application/json' },
-      body: JSON.stringify({ raw: raw, threadId: currentReplyContext.threadId })
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + tokens[activeAcc], 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw: makeEmail(), threadId: currentReplyContext.threadId })
     });
-
     if(!r.ok) throw new Error('Send blocked. Did you grant mail.google.com permissions?');
     
     btn.textContent = 'Sent! ✅';
-    setTimeout(() => { 
-      closeModal('reply-modal'); 
-      btn.disabled = false; 
-      btn.textContent = 'Send Reply 🚀'; 
-    }, 1500);
-
-  } catch(e) {
-    alert(`Failed to send: ${e.message}`);
-    btn.disabled = false;
-    btn.textContent = 'Send Reply 🚀';
-  }
+    setTimeout(() => { closeModal('reply-modal'); btn.disabled = false; btn.textContent = 'Send Reply 🚀'; }, 1500);
+  } catch(e) { alert(`Failed to send: ${e.message}`); btn.disabled = false; btn.textContent = 'Send Reply 🚀'; }
 }
 
 // --- BASIC ACTIONS (Trash / Keep) ---
@@ -649,14 +694,11 @@ async function actionSingle(id, sender, action, btn){
   if(action === 'trash') {
     btn.disabled = true; btn.textContent = 'Trashing...';
     try {
-      const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${id}/trash`, {
-        method: 'POST', headers: { 'Authorization': 'Bearer ' + tokens[activeAcc] }
-      });
+      const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${id}/trash`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + tokens[activeAcc] } });
       if(!r.ok) throw new Error('API Error');
     } catch(e) { alert('Trash failed.'); btn.disabled = false; btn.textContent = 'Trash'; return; }
   }
   
-  // Update memory
   if(sender && sender !== 'Unknown') {
     if(action === 'trash') {
       memory.kept = memory.kept.filter(s => s !== sender);
@@ -669,7 +711,6 @@ async function actionSingle(id, sender, action, btn){
     if(memory.kept.length > 40) memory.kept.shift();
     localStorage.setItem('ea_memory', JSON.stringify(memory));
   }
-
   document.getElementById('em-'+id).style.display = 'none';
   acc.emails = acc.emails.filter(e => e.id !== id);
   renderSidebar(); 
@@ -685,9 +726,7 @@ async function deleteAllInTab(btn){
   try {
     let hasError = false;
     await Promise.all(toDelete.map(async (e) => {
-      const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${e.id}/trash`, {
-        method: 'POST', headers: { 'Authorization': 'Bearer ' + tokens[activeAcc] }
-      });
+      const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${e.id}/trash`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + tokens[activeAcc] } });
       if(!r.ok) hasError = true;
       else if(e.from !== 'Unknown') {
           memory.kept = memory.kept.filter(s => s !== e.from);
