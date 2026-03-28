@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Email Agent (Live Delete Fixed)</title>
+<title>Email Agent (Live Delete + Stable AI)</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✉️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -149,7 +149,7 @@ let allData = [];
 let activeAcc = 0;
 let activeTab = 'Primary';
 let memory = { deleted_senders: [] }; 
-let tokens = []; // <-- THIS IS THE LINE I ACCIDENTALLY DELETED!
+let tokens = [];
 
 window.onload = function(){
   const saved = localStorage.getItem('ea_cfg');
@@ -237,40 +237,53 @@ async function gmailFetch(token){
   });
 }
 
+// Fixed: Chunks of 25, added max_tokens, and added a safe try/catch fallback
 async function groqCategorizeBatch(emails){
   let allCats = [];
+  const BATCH_SIZE = 25; // Lowered to prevent JSON validate fails
   
-  for(let i=0; i<emails.length; i+=50) {
-    const chunk = emails.slice(i, i+50);
+  for(let i=0; i<emails.length; i+=BATCH_SIZE) {
+    const chunk = emails.slice(i, i+BATCH_SIZE);
     const list = chunk.map((e,idx)=>`[${idx}] From: ${e.from}\nSubj: ${e.subject}`).join('\n');
     
     const memoryContext = memory.deleted_senders.length > 0 
       ? `\n\nUSER HABITS: The user frequently deletes emails from these senders: ${memory.deleted_senders.join(', ')}. Categorize them strictly as 'Promotions' or 'Social'.` 
       : "";
 
-    const r=await fetch(`https://api.groq.com/openai/v1/chat/completions`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json', 'Authorization': `Bearer ${cfg.groqKey}`},
-      body:JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        messages: [
-          { role: "system", content: `Sort emails into exactly one of these categories: Primary, Promotions, Social, Updates. Return JSON with key 'results' containing an array of objects: {"category": "..."}.${memoryContext}` },
-          { role: "user", content: list }
-        ],
-        response_format: { type: "json_object" }
-      })
-    });
-    
-    if(!r.ok) {
-        const errText = await r.text();
-        throw new Error(`Groq API Error: ${errText}`);
-    }
-
-    const d=await r.json();
     try {
+      const r=await fetch(`https://api.groq.com/openai/v1/chat/completions`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json', 'Authorization': `Bearer ${cfg.groqKey}`},
+        body:JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages: [
+            { role: "system", content: `Sort emails into exactly one of these categories: Primary, Promotions, Social, Updates. Return JSON with key 'results' containing an array of objects: {"category": "..."}.${memoryContext}` },
+            { role: "user", content: list }
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 2048 // Explicitly allow long generation
+        })
+      });
+      
+      if(!r.ok) {
+          console.warn(`Groq batch failed, defaulting to Primary.`);
+          chunk.forEach(()=> allCats.push({category: 'Primary'}));
+          continue;
+      }
+
+      const d=await r.json();
       const parsed = JSON.parse(d.choices[0].message.content).results || [];
-      allCats.push(...parsed);
+      
+      // Ensure we push exactly the number of items in the chunk
+      for(let j=0; j<chunk.length; j++) {
+          if(parsed[j] && parsed[j].category) {
+              allCats.push({category: parsed[j].category});
+          } else {
+              allCats.push({category: 'Primary'});
+          }
+      }
     } catch(e) {
+       console.error("Groq parsing error on batch", e);
        chunk.forEach(()=> allCats.push({category: 'Primary'}));
     }
   }
