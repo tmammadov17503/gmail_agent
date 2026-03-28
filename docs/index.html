@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Email Agent (Thread Edition)</title>
+<title>Email Agent (Forced Consent & True Sorting)</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✉️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -125,7 +125,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 <div class="ob-wrap">
   <span class="ob-icon">🗂️</span>
   <h1>Email Agent</h1>
-  <p class="sub">Thread Edition. Properly handles full conversation threads, fixes deletion bugs, and includes ultra-strict AI routing.</p>
+  <p class="sub">Thread Edition with <strong>Forced Consent</strong>. Make sure you check the permission box when Google asks, otherwise Trashing will fail!</p>
   <div class="fl"><label>Groq API Key</label><input class="fi" id="ob-gk" type="password"></div>
   <div class="fl"><label>Google OAuth Client ID</label><input class="fi" id="ob-oc" type="text"></div>
   <div class="fl"><label>Accounts</label>
@@ -151,7 +151,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
       <div id="sb-accs"></div>
     </div>
     <div class="content" id="content">
-      <div class="empty">Click <strong>Scan</strong> to fetch and sort your threads.</div>
+      <div class="empty">Click <strong>Scan</strong> to fetch, sort, and organize your threads strictly by time.</div>
     </div>
   </div>
 </div>
@@ -251,12 +251,13 @@ function learnAction(sender, action) {
   localStorage.setItem('ea_memory', JSON.stringify(memory));
 }
 
-// ━━━ AUTH & THREAD FETCH ━━━
+// ━━━ AUTH & THREAD FETCH (FORCED CONSENT) ━━━
 function gmailAuth(idx){
   return new Promise((res,rej)=>{
     const scope='https://www.googleapis.com/auth/gmail.modify';
     const redir=location.href.split('?')[0].split('#')[0];
-    const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(cfg.clientId)}&redirect_uri=${encodeURIComponent(redir)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=select_account`;
+    // ADDED prompt=consent TO FORCE THE PERMISSION BOX TO SHOW UP EVERY TIME!
+    const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(cfg.clientId)}&redirect_uri=${encodeURIComponent(redir)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=consent%20select_account`;
     const pop=window.open(url,'ga'+idx,'width=500,height=600,left=300,top=80');
     if(!pop){rej(new Error('Browser blocked the popup window.'));return;}
     
@@ -273,11 +274,10 @@ function gmailAuth(idx){
 }
 
 async function gmailFetch(token){
-  // FETCH THREADS INSTEAD OF MESSAGES
   const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=100&q=in:inbox', {headers:{Authorization:'Bearer '+token}});
   if(!r.ok) {
     const errData = await r.json();
-    throw new Error(`Google API blocked the request. Details: ${errData.error?.message || r.status}`);
+    throw new Error(`Google API blocked the request. Did you check the permissions? Details: ${errData.error?.message || r.status}`);
   }
   
   const d=await r.json();
@@ -293,7 +293,7 @@ async function gmailFetch(token){
     threads.push(...chunkRes);
   }
 
-  return threads.map(t=>{
+  const processed = threads.map(t=>{
     const firstMsg = t.messages[0]; 
     const lastMsg = t.messages[t.messages.length - 1]; 
 
@@ -305,11 +305,15 @@ async function gmailFetch(token){
     return { 
       id: t.id, 
       count: t.messages.length,
+      time: parseInt(lastMsg.internalDate, 10) || 0, // Extract strict timestamp
       from: getHeader(lastMsg, 'From').replace(/<[^>]+>/,'').trim() || '(Unknown Sender)', 
       subject: getHeader(firstMsg, 'Subject') || '(No Subject)', 
       snippet: lastMsg.snippet || 'No preview available.' 
     };
   });
+  
+  // FORCE STRICT SORTING (Newest to Oldest)
+  return processed.sort((a, b) => b.time - a.time);
 }
 
 // ━━━ STRICT AI CATEGORIZATION ━━━
@@ -399,7 +403,7 @@ function showNextAccountPrompt(){
       <div style="font-size:32px;">📬</div>
       <div style="font-size:15px;font-weight:600;">Connect Account ${i+1} of ${cfg.numAccounts}</div>
       <div style="font-size:13px;color:var(--text2);max-width:360px;line-height:1.6;">
-        Click the button below to authenticate.
+        Click below to authenticate. Make sure you check the "Modify" permission box!
       </div>
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button class="btn btn-ink" style="width:auto;padding:12px 28px;font-size:14px;" onclick="connectAccount(${i})">Authenticate Account ${i+1} →</button>
@@ -409,7 +413,7 @@ function showNextAccountPrompt(){
 }
 
 function skipAccount(i){
-  // Preserves data if skipped!
+  // Preserves existing data if skipped!
   scanIndex++;
   showNextAccountPrompt();
 }
@@ -417,7 +421,7 @@ function skipAccount(i){
 async function connectAccount(i){
   const c = document.getElementById('content');
   try{
-    c.innerHTML=`<div class="lb"><span>🔄</span> Connecting Account ${i+1}... (Check popup)</div>`;
+    c.innerHTML=`<div class="lb"><span>🔄</span> Connecting Account ${i+1}... (Check the permission box in the popup!)</div>`;
     const tok = await gmailAuth(i);
     tokens[i] = tok; 
     
@@ -515,7 +519,6 @@ function renderContent(){
         <div class="ep ${open?'open':''}">`;
 
     list.forEach(e => {
-      // Add a visual badge if it's a multi-message thread
       const threadBadge = e.count > 1 ? `<span class="t-badge">${e.count} msgs</span>` : '';
       
       html += `
@@ -561,19 +564,26 @@ async function deleteSingle(id, sender, btn){
   btn.textContent = 'Trashing...';
 
   try {
-    // API CALL CHANGED TO TRASH ENTIRE THREAD
     const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${id}/trash`, {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + tokens[activeAcc] }
+      headers: { 
+          'Authorization': 'Bearer ' + tokens[activeAcc],
+          'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({}) // Explicitly send empty JSON for strict APIs
     });
-    if(!r.ok) throw new Error('API Error');
+    
+    if(!r.ok) {
+        const err = await r.json();
+        throw new Error(err.error?.message || 'API Error');
+    }
 
     learnAction(sender, 'trash'); 
     document.getElementById('em-'+id).style.display = 'none';
     acc.emails = acc.emails.filter(e => e.id !== id);
     renderSidebar(); 
   } catch(e) {
-    alert('Failed to trash thread. Please reset your data and Re-Scan to accept Google permissions.');
+    alert(`Failed to trash. Google error: ${e.message}\n\nYou likely did not check the "Modify" checkbox during Google Login!`);
     btn.disabled = false;
     btn.textContent = 'Trash';
   }
@@ -591,19 +601,27 @@ async function deleteAllInTab(btn){
   btn.textContent = 'Moving to Trash...';
   
   try {
+    let hasError = false;
     await Promise.all(toDelete.map(async (e) => {
-      await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${e.id}/trash`, {
+      const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${e.id}/trash`, {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + tokens[activeAcc] }
+        headers: { 
+            'Authorization': 'Bearer ' + tokens[activeAcc],
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
       });
-      learnAction(e.from, 'trash');
+      if(!r.ok) hasError = true;
+      else learnAction(e.from, 'trash');
     }));
     
+    if(hasError) throw new Error("Some requests were blocked by Google API permissions.");
+
     acc.emails = acc.emails.filter(e => e.tab !== activeTab);
     renderContent();
     renderSidebar();
   } catch(e) {
-    alert('Some threads failed to trash. Check permissions.');
+    alert(`Failed: ${e.message}\n\nDid you check the "Modify" checkbox during login?`);
     btn.disabled = false;
     btn.textContent = originalText;
   }
