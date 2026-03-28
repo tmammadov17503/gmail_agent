@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email Agent</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f7f6f2;--bg2:#ffffff;--bg3:#efede8;--bg4:#e8e6e0;
+  --border:#dddbd4;--border2:#c8c6be;
+  --text:#18170f;--text2:#6b6960;--text3:#aaa89f;
+  --ink:#1c1b14;--ink2:#2e2d24;
+  --green:#176b3a;--green-bg:#e6f4ec;--green-b:#b3ddc5;
+  --red:#a83220;--red-bg:#faebe8;--red-b:#f0bdb5;
+  --amber:#7a5200;--amber-bg:#fdf3dc;--amber-b:#f5d98a;
+  --blue:#1a4a88;--blue-bg:#e8f0fb;--blue-b:#b5cef0;
+  --teal:#0e6455;--teal-bg:#e4f5f1;--teal-b:#a8ddd4;
+  --purple:#4a3888;--purple-bg:#eeecfb;--purple-b:#c5bef0;
+  --gray:#5a5850;--gray-bg:#efefeb;--gray-b:#d0cec6;
+  --pink:#8a1f5c;--pink-bg:#faeaf3;--pink-b:#e8b4d4;
+  --radius:10px;--radius-lg:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5;}
+
+/* ━━━ ONBOARDING ━━━ */
+#onboarding{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+}
+.ob-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:40px;max-width:480px;width:100%;}
+.ob-icon{font-size:28px;margin-bottom:16px;display:block;}
+.ob-wrap h1{font-size:24px;font-weight:600;letter-spacing:-0.5px;margin-bottom:8px;}
+.ob-wrap .sub{font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.65;}
+.ob-wrap .sub a{color:var(--blue);text-decoration:none;}
+.ob-wrap .sub a:hover{text-decoration:underline;}
+
+.step-list{display:flex;flex-direction:column;gap:8px;margin-bottom:24px;}
+.ob-step{display:flex;gap:12px;background:var(--bg3);border-radius:10px;padding:12px 14px;align-items:flex-start;}
+.ob-n{width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+.ob-t{font-size:12px;color:var(--text2);line-height:1.6;}
+.ob-t strong{color:var(--text);font-weight:500;}
+.ob-t code{font-family:'Geist Mono',monospace;font-size:11px;background:var(--bg4);padding:1px 5px;border-radius:4px;}
+
+.fl{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+.fl label{font-size:11px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;color:var(--text3);}
+.fi{
+  width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;
+  font-size:13px;font-family:'Geist Mono',monospace;background:var(--bg);color:var(--text);
+  outline:none;transition:border-color 0.15s;
+}
+.fi:focus{border-color:var(--ink);}
+.fi::placeholder{color:var(--text3);}
+select.fi{font-family:'Instrument Sans',sans-serif;cursor:pointer;}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:9px 16px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;
+  border:1px solid var(--border2);background:var(--bg3);color:var(--text);
+  font-family:'Instrument Sans',sans-serif;transition:all 0.15s;white-space:nowrap;
+}
+.btn:hover{background:var(--bg4);border-color:var(--border2);}
+.btn:disabled{opacity:0.45;cursor:not-allowed;}
+.btn-ink{background:var(--ink);border-color:var(--ink);color:#fff;width:100%;padding:13px;font-size:14px;border-radius:10px;margin-top:6px;}
+.btn-ink:hover:not(:disabled){background:var(--ink2);border-color:var(--ink2);}
+.note{font-size:11px;color:var(--text3);margin-top:10px;text-align:center;line-height:1.5;}
+.err{font-size:12px;color:var(--red);margin-top:8px;padding:8px 12px;background:var(--red-bg);border-radius:8px;display:none;}
+
+/* ━━━ APP SHELL ━━━ */
+#app{display:none;flex-direction:column;min-height:100vh;}
+#app.on{display:flex;}
+
+/* topbar */
+.topbar{
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:100;
+}
+.tb-l{display:flex;align-items:center;gap:10px;}
+.tb-logo{width:30px;height:30px;background:var(--ink);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;}
+.tb-title{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+.tb-r{display:flex;align-items:center;gap:8px;}
+.ts{font-size:11px;color:var(--text3);font-family:'Geist Mono',monospace;}
+.scan-btn{
+  padding:7px 16px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;
+  border:none;background:var(--ink);color:#fff;font-family:'Instrument Sans',sans-serif;
+  display:flex;align-items:center;gap:6px;transition:background 0.15s;
+}
+.scan-btn:hover:not(:disabled){background:var(--ink2);}
+.scan-btn:disabled{opacity:0.5;cursor:not-allowed;}
+.settings-btn{
+  padding:7px 10px;border-radius:8px;font-size:13px;cursor:pointer;
+  border:1px solid var(--border);background:transparent;color:var(--text2);
+  transition:all 0.15s;
+}
+.settings-btn:hover{background:var(--bg3);color:var(--text);border-color:var(--border2);}
+
+/* layout */
+.layout{display:flex;flex:1;overflow:hidden;min-height:0;}
+
+/* sidebar */
+.sidebar{
+  width:196px;flex-shrink:0;border-right:1px solid var(--border);background:var(--bg2);
+  padding:14px 10px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;
+}
+.sl{font-size:10px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:var(--text3);padding:4px 8px 6px;}
+.sep{height:1px;background:var(--border);margin:6px 2px;}
+.acc-item{
+  display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;
+  cursor:pointer;font-size:12px;color:var(--text2);transition:all 0.12s;border:1px solid transparent;
+}
+.acc-item:hover{background:var(--bg3);color:var(--text);}
+.acc-item.active{background:var(--bg3);color:var(--text);border-color:var(--border2);}
+.av{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;}
+.ab{margin-left:auto;background:var(--ink);color:#fff;font-size:10px;font-weight:600;padding:1px 5px;border-radius:8px;font-family:'Geist Mono',monospace;}
+.cat-item{
+  display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:8px;
+  cursor:pointer;font-size:12px;color:var(--text2);transition:all 0.12s;
+}
+.cat-item:hover{background:var(--bg3);color:var(--text);}
+.cd{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+.cc{margin-left:auto;font-size:11px;color:var(--text3);font-family:'Geist Mono',monospace;}
+
+/* content */
+.content{flex:1;overflow-y:auto;padding:20px 24px;}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:20px;}
+.sc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;}
+.sl2{font-size:11px;color:var(--text3);margin-bottom:4px;font-family:'Geist Mono',monospace;letter-spacing:0.3px;}
+.sv{font-size:22px;font-weight:600;letter-spacing:-0.5px;}
+
+/* cat blocks */
+.cb{margin-bottom:10px;}
+.ch{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--radius);cursor:pointer;user-select:none;transition:background 0.1s;
+}
+.ch:hover{background:var(--bg3);}
+.ch.open{border-radius:var(--radius) var(--radius) 0 0;border-bottom-color:transparent;}
+.chl{display:flex;align-items:center;gap:10px;}
+.ctag{font-size:11px;font-weight:600;padding:3px 10px;border-radius:4px;font-family:'Geist Mono',monospace;}
+.cn{font-size:12px;color:var(--text3);font-family:'Geist Mono',monospace;}
+.chev{font-size:12px;color:var(--text3);transition:transform 0.2s;}
+.chev.open{transform:rotate(90deg);}
+
+.ep{display:none;background:var(--bg2);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);overflow:hidden;}
+.ep.open{display:block;}
+
+.er{
+  display:grid;grid-template-columns:18px 1fr auto;gap:12px;align-items:center;
+  padding:10px 14px;border-bottom:1px solid var(--border);transition:background 0.1s;
+}
+.er:last-child{border-bottom:none;}
+.er:hover{background:var(--bg3);}
+.eck{width:14px;height:14px;border:1.5px solid var(--border2);border-radius:3px;cursor:pointer;appearance:none;background:transparent;transition:all 0.12s;flex-shrink:0;}
+.eck:checked{background:var(--ink);border-color:var(--ink);}
+.eb{min-width:0;}
+.ef{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px;}
+.es{font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;}
+.eq{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.er2{display:flex;align-items:center;gap:5px;flex-shrink:0;}
+.et{font-size:11px;color:var(--text3);font-family:'Geist Mono',monospace;white-space:nowrap;}
+.eb2{padding:3px 9px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--text2);transition:all 0.12s;font-family:'Instrument Sans',sans-serif;white-space:nowrap;}
+.eb2:hover{background:var(--bg3);color:var(--text);}
+.eb2.rp{color:var(--teal);border-color:var(--teal-b);}
+.eb2.rp:hover{background:var(--teal-bg);}
+.eb2.dl:hover{color:var(--red);border-color:var(--red-b);background:var(--red-bg);}
+
+/* loading / empty */
+.lb{display:flex;align-items:center;gap:12px;background:var(--amber-bg);border:1px solid var(--amber-b);border-radius:var(--radius);padding:14px 18px;margin-bottom:18px;font-size:13px;color:var(--amber);}
+.sp{width:16px;height:16px;border:2px solid rgba(122,82,0,0.2);border-top-color:var(--amber);border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.empty{text-align:center;padding:56px 20px;color:var(--text3);}
+.empty-i{font-size:36px;margin-bottom:10px;}
+.empty p{font-size:13px;line-height:1.7;}
+.erbox{background:var(--red-bg);border:1px solid var(--red-b);border-radius:var(--radius);padding:14px 18px;font-size:13px;color:var(--red);margin-bottom:14px;line-height:1.6;}
+.acc-lbl{font-size:12px;color:var(--text3);font-family:'Geist Mono',monospace;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.acc-lbl::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* modal */
+.mw{display:none;position:fixed;inset:0;background:rgba(24,23,15,0.55);z-index:200;align-items:center;justify-content:center;padding:20px;}
+.mw.open{display:flex;}
+.mb{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:24px;width:100%;max-width:520px;max-height:86vh;overflow-y:auto;}
+.mb h3{font-size:15px;font-weight:600;margin-bottom:3px;}
+.mm{font-size:12px;color:var(--text3);margin-bottom:16px;font-family:'Geist Mono',monospace;}
+.db{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;line-height:1.65;color:var(--text2);min-height:90px;margin-bottom:10px;white-space:pre-wrap;}
+.ml{font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;}
+.rta{width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:12px;font-size:13px;color:var(--text);resize:vertical;min-height:100px;margin-bottom:14px;font-family:'Instrument Sans',sans-serif;line-height:1.6;outline:none;}
+.rta:focus{border-color:var(--ink);}
+.mf{display:flex;gap:8px;justify-content:flex-end;}
+
+/* settings panel */
+.mbs{max-width:440px;}
+</style>
+</head>
+<body>
+
+<!-- ━━━ ONBOARDING ━━━ -->
+<div id="onboarding">
+<div class="ob-wrap">
+  <span class="ob-icon">✉</span>
+  <h1>Email Agent</h1>
+  <p class="sub">Free AI email dashboard — categorizes your Gmail inbox across up to 3 accounts. Powered by <strong>Gemini Flash</strong> (free) and Gmail API. Your API keys are saved in your browser and never leave your device.</p>
+
+  <div class="step-list">
+    <div class="ob-step">
+      <div class="ob-n">1</div>
+      <div class="ob-t">Get a free <strong>Gemini API key</strong> at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> — sign in with Google → Create API key. No billing required.</div>
+    </div>
+    <div class="ob-step">
+      <div class="ob-n">2</div>
+      <div class="ob-t">Create a <strong>Google OAuth Client ID</strong> at <a href="https://console.cloud.google.com/apis/credentials" target="_blank">console.cloud.google.com</a>: enable Gmail API → Credentials → OAuth 2.0 Client ID → Web app → add <code>this page's URL</code> as redirect URI.</div>
+    </div>
+    <div class="ob-step">
+      <div class="ob-n">3</div>
+      <div class="ob-t">Paste your keys below. They'll be saved in your browser — <strong>you'll never need to enter them again</strong>.</div>
+    </div>
+  </div>
+
+  <div class="fl">
+    <label>Gemini API Key</label>
+    <input class="fi" id="ob-gk" type="password" placeholder="AIzaSy...">
+  </div>
+  <div class="fl">
+    <label>Google OAuth Client ID</label>
+    <input class="fi" id="ob-oc" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com">
+  </div>
+  <div class="fl">
+    <label>Number of Gmail accounts</label>
+    <select class="fi" id="ob-na">
+      <option value="1">1 account</option>
+      <option value="2">2 accounts</option>
+      <option value="3" selected>3 accounts</option>
+    </select>
+  </div>
+
+  <button class="btn btn-ink" onclick="obSave()">Save & Launch →</button>
+  <div class="err" id="ob-err"></div>
+  <p class="note">Keys are stored in <code style="font-family:'Geist Mono',monospace;font-size:10px;">localStorage</code> in your browser only — never sent to any server.</p>
+</div>
+</div>
+
+<!-- ━━━ APP ━━━ -->
+<div id="app">
+  <div class="topbar">
+    <div class="tb-l">
+      <div class="tb-logo">✉</div>
+      <span class="tb-title">Email Agent</span>
+    </div>
+    <div class="tb-r">
+      <span class="ts" id="ts">—</span>
+      <button class="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
+      <button class="scan-btn" id="scan-btn" onclick="runScan()">
+        <span id="scan-icon">↻</span> Scan All
+      </button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="sidebar">
+      <div class="sl">Accounts</div>
+      <div id="sb-accs"></div>
+      <div class="sep"></div>
+      <div class="sl">Categories</div>
+      <div id="sb-cats"></div>
+    </div>
+    <div class="content" id="content">
+      <div class="empty"><div class="empty-i">📬</div><p>Click <strong>Scan All</strong> to connect your<br>Gmail accounts and categorize emails.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- Reply modal -->
+<div class="mw" id="modal">
+  <div class="mb">
+    <h3>Draft Reply</h3>
+    <div class="mm" id="m-meta"></div>
+    <div class="db" id="m-draft">Generating with Gemini...</div>
+    <div class="ml">Edit before sending</div>
+    <textarea class="rta" id="m-ta"></textarea>
+    <div class="mf">
+      <button class="btn" onclick="closeMod()">Cancel</button>
+      <button class="btn btn-ink" style="width:auto;padding:9px 20px;" onclick="copyDraft()">Copy to clipboard</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="mw" id="s-modal">
+  <div class="mb mbs">
+    <h3>Settings</h3>
+    <div class="mm">Update your saved keys</div>
+    <div class="fl"><label>Gemini API Key</label><input class="fi" id="s-gk" type="password"></div>
+    <div class="fl"><label>Google OAuth Client ID</label><input class="fi" id="s-oc" type="text"></div>
+    <div class="fl"><label>Number of accounts</label>
+      <select class="fi" id="s-na">
+        <option value="1">1 account</option>
+        <option value="2">2 accounts</option>
+        <option value="3">3 accounts</option>
+      </select>
+    </div>
+    <div class="mf" style="margin-top:4px;">
+      <button class="btn" onclick="closeSettings()">Cancel</button>
+      <button class="btn btn-ink" style="width:auto;padding:9px 20px;" onclick="saveSettings()">Save Changes</button>
+    </div>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);text-align:center;">
+      <button class="btn" style="color:var(--red);border-color:var(--red-b);font-size:12px;" onclick="resetApp()">Reset & clear all saved data</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ━━━ CONFIG ━━━ */
+const CATS = {
+  important: {label:'Important', c:'var(--blue)',   bg:'var(--blue-bg)',   e:'★'},
+  work:      {label:'Work',      c:'var(--purple)', bg:'var(--purple-bg)', e:'◈'},
+  finance:   {label:'Finance',   c:'var(--green)',  bg:'var(--green-bg)',  e:'◉'},
+  social:    {label:'Social',    c:'var(--pink)',   bg:'var(--pink-bg)',   e:'◎'},
+  newsletter:{label:'Newsletter',c:'var(--teal)',   bg:'var(--teal-bg)',   e:'◆'},
+  ads:       {label:'Ads',       c:'var(--amber)',  bg:'var(--amber-bg)',  e:'▲'},
+  spam:      {label:'Spam',      c:'var(--red)',    bg:'var(--red-bg)',    e:'✕'},
+  other:     {label:'Other',     c:'var(--gray)',   bg:'var(--gray-bg)',   e:'·'},
+};
+const CAT_ORDER = ['important','work','finance','social','newsletter','ads','spam','other'];
+const AVG_COLORS = [['#dde8fb','var(--blue)'],['#e3f7ee','var(--green)'],['#fdf3dc','var(--amber)']];
+
+let cfg = {};
+let allData = [];
+let activeAcc = 0;
+let tokens = [];
+
+/* ━━━ INIT ━━━ */
+window.onload = function(){
+  const saved = localStorage.getItem('ea_cfg');
+  if(saved){
+    try{ cfg = JSON.parse(saved); initApp(); return; }catch(e){}
+  }
+  document.getElementById('onboarding').style.display='flex';
+};
+
+function obSave(){
+  const gk = document.getElementById('ob-gk').value.trim();
+  const oc = document.getElementById('ob-oc').value.trim();
+  const na = parseInt(document.getElementById('ob-na').value);
+  const err = document.getElementById('ob-err');
+  if(!gk){showErr(err,'Please enter your Gemini API key.');return;}
+  if(!oc){showErr(err,'Please enter your Google OAuth Client ID.');return;}
+  cfg = {geminiKey:gk, clientId:oc, numAccounts:na};
+  localStorage.setItem('ea_cfg', JSON.stringify(cfg));
+  err.style.display='none';
+  initApp();
+}
+
+function initApp(){
+  allData = [];
+  for(let i=0;i<cfg.numAccounts;i++)
+    allData.push({email:'Account '+(i+1), name:'Account '+(i+1), emails:[]});
+  document.getElementById('onboarding').style.display='none';
+  document.getElementById('app').classList.add('on');
+  renderSidebar();
+  renderContent();
+}
+
+function showErr(el,msg){ el.textContent=msg; el.style.display='block'; }
+
+/* ━━━ SETTINGS ━━━ */
+function openSettings(){
+  document.getElementById('s-gk').value = cfg.geminiKey||'';
+  document.getElementById('s-oc').value = cfg.clientId||'';
+  document.getElementById('s-na').value = cfg.numAccounts||3;
+  document.getElementById('s-modal').classList.add('open');
+}
+function closeSettings(){ document.getElementById('s-modal').classList.remove('open'); }
+function saveSettings(){
+  const gk=document.getElementById('s-gk').value.trim();
+  const oc=document.getElementById('s-oc').value.trim();
+  const na=parseInt(document.getElementById('s-na').value);
+  if(!gk||!oc) return;
+  cfg={geminiKey:gk,clientId:oc,numAccounts:na};
+  localStorage.setItem('ea_cfg',JSON.stringify(cfg));
+  closeSettings();
+  initApp();
+}
+function resetApp(){
+  if(confirm('Clear all saved keys and data?')){
+    localStorage.removeItem('ea_cfg');
+    location.reload();
+  }
+}
+
+/* ━━━ GMAIL AUTH ━━━ */
+function gmailAuth(idx){
+  return new Promise((res,rej)=>{
+    const scope='https://www.googleapis.com/auth/gmail.readonly';
+    const redir=location.href.split('?')[0].split('#')[0];
+    const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(cfg.clientId)}&redirect_uri=${encodeURIComponent(redir)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=select_account`;
+    const pop=window.open(url,'ga'+idx,'width=500,height=600,left=300,top=80');
+    if(!pop){rej(new Error('Popup blocked — please allow popups for this page.'));return;}
+    const t=setInterval(()=>{
+      try{
+        if(!pop||pop.closed){clearInterval(t);rej(new Error('Auth window closed.'));return;}
+        const u=pop.location.href;
+        if(u&&u.includes('access_token=')){
+          clearInterval(t);pop.close();
+          const p=new URLSearchParams((u.split('#')[1]||u.split('?')[1]||''));
+          const tk=p.get('access_token');
+          if(tk)res(tk); else rej(new Error('No token found.'));
+        }
+      }catch(e){}
+    },500);
+    setTimeout(()=>{clearInterval(t);if(!pop.closed)pop.close();rej(new Error('Auth timed out.'));},120000);
+  });
+}
+
+async function gmailFetch(token){
+  const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=25&q=in:inbox',
+    {headers:{Authorization:'Bearer '+token}});
+  if(!r.ok)throw new Error('Gmail list error '+r.status);
+  const d=await r.json();
+  if(!d.messages)return[];
+  const msgs=await Promise.all(d.messages.slice(0,20).map(m=>
+    fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+      {headers:{Authorization:'Bearer '+token}}).then(r=>r.json())
+  ));
+  return msgs.map(m=>{
+    const h=m.payload?.headers||[];
+    const get=n=>(h.find(x=>x.name===n)||{value:''}).value;
+    return{
+      id:m.id,
+      from:get('From').replace(/<[^>]+>/,'').trim()||get('From'),
+      subject:get('Subject')||'(no subject)',
+      snippet:m.snippet||'',
+      time:relTime(get('Date')),
+    };
+  });
+}
+
+async function gmailProfile(token){
+  const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:'Bearer '+token}});
+  const d=await r.json();
+  return d.emailAddress||'unknown@gmail.com';
+}
+
+function relTime(ds){
+  try{
+    const d=new Date(ds),df=(Date.now()-d)/1000;
+    if(df<3600)return Math.round(df/60)+'m';
+    if(df<86400)return Math.round(df/3600)+'h';
+    if(df<604800)return Math.round(df/86400)+'d';
+    return d.toLocaleDateString('en',{month:'short',day:'numeric'});
+  }catch{return'';}
+}
+
+/* ━━━ GEMINI ━━━ */
+async function geminiCategorize(emails){
+  const list=emails.map((e,i)=>`[${i}] From: ${e.from}\nSubject: ${e.subject}\nPreview: ${e.snippet.slice(0,120)}`).join('\n\n');
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cfg.geminiKey}`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      contents:[{parts:[{text:`Categorize each email. Categories: important, work, finance, social, newsletter, ads, spam, other.\nReturn ONLY a JSON array (same length, same order). Each item: {"category":"...","reason":"one sentence","needsReply":true/false}\n\nEmails:\n${list}`}]}],
+      generationConfig:{temperature:0.1,maxOutputTokens:2048}
+    })
+  });
+  if(!r.ok)throw new Error('Gemini error '+r.status);
+  const d=await r.json();
+  let t=d.candidates?.[0]?.content?.parts?.[0]?.text||'[]';
+  t=t.replace(/```json/g,'').replace(/```/g,'').trim();
+  return JSON.parse(t);
+}
+
+async function geminiDraft(email){
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cfg.geminiKey}`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      contents:[{parts:[{text:`Write a professional, natural reply to this email. Return ONLY the email body — no subject, no preamble.\n\nFrom: ${email.from}\nSubject: ${email.subject}\nContent: ${email.snippet}`}]}],
+      generationConfig:{temperature:0.7,maxOutputTokens:400}
+    })
+  });
+  const d=await r.json();
+  return d.candidates?.[0]?.content?.parts?.[0]?.text||'Could not generate draft.';
+}
+
+/* ━━━ SCAN ━━━ */
+async function runScan(){
+  const btn=document.getElementById('scan-btn');
+  btn.disabled=true;
+  document.getElementById('scan-icon').textContent='';
+  btn.querySelector('span').insertAdjacentHTML('afterend',' Scanning...');
+
+  const c=document.getElementById('content');
+  c.innerHTML=`<div class="lb"><div class="sp"></div>Starting scan — authorize Gmail in the popup windows...</div>`;
+
+  const errs=[];
+  for(let i=0;i<cfg.numAccounts;i++){
+    try{
+      c.innerHTML=`<div class="lb"><div class="sp"></div>Account ${i+1} — authorize Gmail in the popup window...</div>`;
+      const tok=await gmailAuth(i);
+      tokens[i]=tok;
+      c.innerHTML=`<div class="lb"><div class="sp"></div>Account ${i+1} connected — fetching emails...</div>`;
+      const [emails,addr]=await Promise.all([gmailFetch(tok),gmailProfile(tok)]);
+      allData[i].email=addr;
+      allData[i].name=addr.split('@')[0];
+      if(!emails.length){allData[i].emails=[];continue;}
+      c.innerHTML=`<div class="lb"><div class="sp"></div>Categorizing ${emails.length} emails from ${addr}...</div>`;
+      const cats=await geminiCategorize(emails);
+      allData[i].emails=emails.map((e,j)=>({...e,category:cats[j]?.category||'other',reason:cats[j]?.reason||'',needsReply:!!cats[j]?.needsReply}));
+    }catch(e){
+      errs.push(`Account ${i+1}: ${e.message}`);
+      allData[i].emails=[];
+    }
+  }
+
+  const now=new Date();
+  document.getElementById('ts').textContent='Last scan '+now.toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'});
+  renderSidebar();renderContent();
+  btn.disabled=false;
+  btn.innerHTML='<span>↻</span> Scan All';
+  if(errs.length){
+    const d=document.createElement('div');d.className='erbox';
+    d.innerHTML='<strong>Errors:</strong><br>'+errs.map(e=>`• ${esc(e)}`).join('<br>');
+    document.getElementById('content').prepend(d);
+  }
+}
+
+/* ━━━ RENDER ━━━ */
+function groupCat(emails){
+  const g={};
+  emails.forEach(e=>{if(!g[e.category])g[e.category]=[];g[e.category].push(e);});
+  return g;
+}
+
+function renderSidebar(){
+  document.getElementById('sb-accs').innerHTML=allData.map((a,i)=>`
+    <div class="acc-item ${i===activeAcc?'active':''}" onclick="setAcc(${i})">
+      <div class="av" style="background:${AVG_COLORS[i]?.[0]||'#eee'};color:${AVG_COLORS[i]?.[1]||'#333'};">
+        ${(a.email||'?').substring(0,2).toUpperCase()}
+      </div>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.name||'Account '+(i+1))}</span>
+      ${a.emails.length?`<span class="ab">${a.emails.length}</span>`:''}
+    </div>`).join('');
+
+  const g=groupCat(allData[activeAcc]?.emails||[]);
+  document.getElementById('sb-cats').innerHTML=CAT_ORDER.filter(c=>g[c]?.length).map(c=>`
+    <div class="cat-item">
+      <div class="cd" style="background:${CATS[c].c}"></div>
+      <span>${CATS[c].label}</span>
+      <span class="cc">${g[c].length}</span>
+    </div>`).join('');
+}
+
+function setAcc(i){activeAcc=i;renderSidebar();renderContent();}
+
+function renderContent(){
+  const acc=allData[activeAcc];
+  const c=document.getElementById('content');
+  if(!acc?.emails?.length){
+    c.innerHTML=`<div class="empty"><div class="empty-i">📭</div><p>No emails yet for this account.</p></div>`;
+    return;
+  }
+  const g=groupCat(acc.emails);
+  const total=acc.emails.length;
+  const action=(g.important||[]).length+(g.work||[]).length;
+  const needsR=acc.emails.filter(e=>e.needsReply).length;
+  const junk=(g.spam||[]).length+(g.ads||[]).length;
+
+  let html=`
+    <div class="acc-lbl">${esc(acc.email)}</div>
+    <div class="stats">
+      <div class="sc"><div class="sl2">Total</div><div class="sv">${total}</div></div>
+      <div class="sc"><div class="sl2">Action needed</div><div class="sv" style="color:var(--green)">${action}</div></div>
+      <div class="sc"><div class="sl2">Needs reply</div><div class="sv" style="color:var(--blue)">${needsR}</div></div>
+      <div class="sc"><div class="sl2">Spam / ads</div><div class="sv" style="color:var(--red)">${junk}</div></div>
+    </div>`;
+
+  CAT_ORDER.forEach(cat=>{
+    const list=g[cat];if(!list?.length)return;
+    const cfg2=CATS[cat];
+    const open=cat==='important'||cat==='work';
+    html+=`
+      <div class="cb">
+        <div class="ch${open?' open':''}" onclick="togCat(this)">
+          <div class="chl">
+            <span class="ctag" style="background:${cfg2.bg};color:${cfg2.c}">${cfg2.e} ${cfg2.label}</span>
+            <span class="cn">${list.length} email${list.length>1?'s':''}</span>
+          </div>
+          <span class="chev${open?' open':''}">▶</span>
+        </div>
+        <div class="ep${open?' open':''}">`;
+
+    list.forEach(email=>{
+      const canR=email.needsReply||cat==='important'||cat==='work';
+      html+=`
+        <div class="er">
+          <input type="checkbox" class="eck">
+          <div class="eb">
+            <div class="ef">${esc(email.from)}</div>
+            <div class="es">${esc(email.subject)}</div>
+            <div class="eq">${esc(email.snippet.slice(0,90))}${email.reason?` <em style="color:var(--text3)">— ${esc(email.reason)}</em>`:''}  </div>
+          </div>
+          <div class="er2">
+            <span class="et">${esc(email.time)}</span>
+            ${canR?`<button class="eb2 rp" onclick='openMod(${jsEsc(email)})'>Reply</button>`:''}
+            <button class="eb2 dl" onclick="delRow(this)">Delete</button>
+          </div>
+        </div>`;
+    });
+    html+=`</div></div>`;
+  });
+
+  c.innerHTML=html;
+}
+
+function togCat(h){
+  const p=h.nextElementSibling,cv=h.querySelector('.chev');
+  h.classList.toggle('open');p.classList.toggle('open');cv.classList.toggle('open');
+}
+
+function delRow(btn){
+  const r=btn.closest('.er');
+  r.style.transition='opacity 0.25s';r.style.opacity='0';
+  setTimeout(()=>r.remove(),260);
+}
+
+/* ━━━ MODAL ━━━ */
+async function openMod(email){
+  document.getElementById('m-meta').textContent=`${email.from}  ·  ${email.subject}`;
+  document.getElementById('m-draft').textContent='Generating with Gemini...';
+  document.getElementById('m-ta').value='';
+  document.getElementById('modal').classList.add('open');
+  try{
+    const draft=await geminiDraft(email);
+    document.getElementById('m-draft').textContent=draft;
+    document.getElementById('m-ta').value=draft;
+  }catch(e){document.getElementById('m-draft').textContent='Error: '+e.message;}
+}
+function closeMod(){document.getElementById('modal').classList.remove('open');}
+function copyDraft(){
+  navigator.clipboard.writeText(document.getElementById('m-ta').value).then(()=>{
+    const b=document.querySelector('#modal .btn-ink');
+    b.textContent='✓ Copied!';setTimeout(()=>b.textContent='Copy to clipboard',1600);
+  });
+}
+
+document.getElementById('modal').addEventListener('click',e=>{if(e.target===document.getElementById('modal'))closeMod();});
+document.getElementById('s-modal').addEventListener('click',e=>{if(e.target===document.getElementById('s-modal'))closeSettings();});
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function jsEsc(obj){return JSON.stringify(obj).replace(/"/g,'&quot;');}
+</script>
+</body>
+</html>
