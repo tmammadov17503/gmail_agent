@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Email Agent (Live Delete + Stable AI)</title>
+<title>Email Agent (Popup Blocker Fix)</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✉️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -151,6 +151,10 @@ let activeTab = 'Primary';
 let memory = { deleted_senders: [] }; 
 let tokens = [];
 
+// New globals for step-by-step connection
+let scanIndex = 0;
+let scanErrors = [];
+
 window.onload = function(){
   const saved = localStorage.getItem('ea_cfg');
   const savedMem = localStorage.getItem('ea_memory');
@@ -198,8 +202,10 @@ function gmailAuth(idx){
     const redir=location.href.split('?')[0].split('#')[0];
     const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(cfg.clientId)}&redirect_uri=${encodeURIComponent(redir)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=select_account`;
     const pop=window.open(url,'ga'+idx,'width=500,height=600,left=300,top=80');
+    if(!pop){rej(new Error('Browser blocked the popup window.'));return;}
+    
     const t=setInterval(()=>{
-      if(!pop||pop.closed){clearInterval(t);rej(new Error('Auth window closed manually.'));}
+      if(pop.closed){clearInterval(t);rej(new Error('Auth window closed manually.'));}
       try{
         if(pop.location.href.includes('access_token=')){
           clearInterval(t); pop.close();
@@ -237,10 +243,9 @@ async function gmailFetch(token){
   });
 }
 
-// Fixed: Chunks of 25, added max_tokens, and added a safe try/catch fallback
 async function groqCategorizeBatch(emails){
   let allCats = [];
-  const BATCH_SIZE = 25; // Lowered to prevent JSON validate fails
+  const BATCH_SIZE = 25; 
   
   for(let i=0; i<emails.length; i+=BATCH_SIZE) {
     const chunk = emails.slice(i, i+BATCH_SIZE);
@@ -261,12 +266,11 @@ async function groqCategorizeBatch(emails){
             { role: "user", content: list }
           ],
           response_format: { type: "json_object" },
-          max_tokens: 2048 // Explicitly allow long generation
+          max_tokens: 2048
         })
       });
       
       if(!r.ok) {
-          console.warn(`Groq batch failed, defaulting to Primary.`);
           chunk.forEach(()=> allCats.push({category: 'Primary'}));
           continue;
       }
@@ -274,7 +278,6 @@ async function groqCategorizeBatch(emails){
       const d=await r.json();
       const parsed = JSON.parse(d.choices[0].message.content).results || [];
       
-      // Ensure we push exactly the number of items in the chunk
       for(let j=0; j<chunk.length; j++) {
           if(parsed[j] && parsed[j].category) {
               allCats.push({category: parsed[j].category});
@@ -283,41 +286,86 @@ async function groqCategorizeBatch(emails){
           }
       }
     } catch(e) {
-       console.error("Groq parsing error on batch", e);
        chunk.forEach(()=> allCats.push({category: 'Primary'}));
     }
   }
   return allCats;
 }
 
+// ━━━ STEP-BY-STEP SCAN LOGIC ━━━
+
 async function runScan(){
   const btn = document.getElementById('btn-scan');
   btn.disabled = true;
-  const c = document.getElementById('content');
-  let scanErrors = []; 
-  
-  for(let i=0; i<cfg.numAccounts; i++){
-    try{
-      c.innerHTML=`<div class="lb">Connecting Account ${i+1}... (Make sure to check the permission boxes!)</div>`;
-      const tok = await gmailAuth(i);
-      tokens[i] = tok; 
-      
-      c.innerHTML=`<div class="lb">Fetching 100 emails securely from Google...</div>`;
-      const pr = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:'Bearer '+tok}});
-      allData[i].email = (await pr.json()).emailAddress;
+  scanErrors = [];
+  scanIndex = 0;
+  showNextAccountPrompt();
+}
 
-      const emails = await gmailFetch(tok);
-      if(emails.length){
-        c.innerHTML=`<div class="lb">Groq AI is categorizing ${emails.length} emails...</div>`;
-        const cats = await groqCategorizeBatch(emails);
-        allData[i].emails = emails.map((e,j)=>({...e, category: cats[j]?.category || 'Primary'}));
-      }
-    }catch(e){ 
-      console.error(e); 
-      scanErrors.push(`Account ${i+1}: ${e.message}`);
-    }
+function showNextAccountPrompt(){
+  const i = scanIndex;
+  if(i >= cfg.numAccounts){
+    finishScan();
+    return;
   }
   
+  const c = document.getElementById('content');
+  const skip = i > 0 ? `<button class="btn" style="margin-left:8px;" onclick="skipAccount(${i})">Skip account ${i+1}</button>` : '';
+  
+  c.innerHTML=`
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;gap:16px;">
+      <div style="font-size:32px;">📬</div>
+      <div style="font-size:15px;font-weight:600;">Connect Account ${i+1} of ${cfg.numAccounts}</div>
+      <div style="font-size:13px;color:var(--text2);max-width:360px;line-height:1.6;">
+        Click the button below to authenticate.<br>
+        ${i > 0 ? 'Make sure to select a <strong>different</strong> Google account than the previous ones.' : ''}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn btn-ink" style="width:auto;padding:12px 28px;font-size:14px;" onclick="connectAccount(${i})">
+          Authenticate Account ${i+1} →
+        </button>
+        ${skip}
+      </div>
+    </div>`;
+}
+
+function skipAccount(i){
+  allData[i].emails = [];
+  scanIndex++;
+  showNextAccountPrompt();
+}
+
+async function connectAccount(i){
+  const c = document.getElementById('content');
+  try{
+    c.innerHTML=`<div class="lb">Connecting Account ${i+1}... (Check popup and allow permissions)</div>`;
+    const tok = await gmailAuth(i);
+    tokens[i] = tok; 
+    
+    c.innerHTML=`<div class="lb">Fetching 100 emails securely from Google...</div>`;
+    const pr = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:'Bearer '+tok}});
+    allData[i].email = (await pr.json()).emailAddress;
+
+    const emails = await gmailFetch(tok);
+    if(emails.length){
+      c.innerHTML=`<div class="lb">Groq AI is categorizing ${emails.length} emails...</div>`;
+      const cats = await groqCategorizeBatch(emails);
+      allData[i].emails = emails.map((e,j)=>({...e, category: cats[j]?.category || 'Primary'}));
+    } else {
+      allData[i].emails = [];
+    }
+  }catch(e){ 
+    console.error(e); 
+    scanErrors.push(`Account ${i+1}: ${e.message}`);
+  }
+  
+  renderSidebar();
+  scanIndex++;
+  showNextAccountPrompt(); // Ask for the next one!
+}
+
+function finishScan(){
+  const btn = document.getElementById('btn-scan');
   btn.disabled = false;
   renderSidebar();
   renderContent();
@@ -330,6 +378,8 @@ async function runScan(){
   }
 }
 
+// ━━━ RENDER LOGIC ━━━
+
 function renderSidebar(){
   document.getElementById('sb-accs').innerHTML=allData.map((a,i)=>`
     <div class="acc-item ${i===activeAcc?'active':''}" onclick="activeAcc=${i}; renderContent(); renderSidebar();">
@@ -341,7 +391,7 @@ function renderContent(){
   const acc = allData[activeAcc];
   if(!acc.emails || !acc.emails.length) { 
       if(!document.querySelector('.erbox')) {
-          document.getElementById('content').innerHTML = '<div class="empty">No emails loaded. Hit Scan!</div>'; 
+          document.getElementById('content').innerHTML = '<div class="empty">No emails loaded for this account. Hit Scan!</div>'; 
       }
       return; 
   }
@@ -378,6 +428,8 @@ function renderContent(){
   document.getElementById('content').innerHTML = html;
   if(existingError) document.getElementById('content').prepend(existingError);
 }
+
+// ━━━ TRASH LOGIC ━━━
 
 async function deleteSingle(id, btn){
   const acc = allData[activeAcc];
