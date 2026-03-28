@@ -456,7 +456,7 @@ function relTime(ds){
 /* ━━━ GEMINI ━━━ */
 async function geminiCategorize(emails){
   const list=emails.map((e,i)=>`[${i}] From: ${e.from}\nSubject: ${e.subject}\nPreview: ${e.snippet.slice(0,120)}`).join('\n\n');
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cfg.geminiKey}`,{
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent?key=${cfg.geminiKey}`,{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       contents:[{parts:[{text:`Categorize each email. Categories: important, work, finance, social, newsletter, ads, spam, other.\nReturn ONLY a JSON array (same length, same order). Each item: {"category":"...","reason":"one sentence","needsReply":true/false}\n\nEmails:\n${list}`}]}],
@@ -471,7 +471,7 @@ async function geminiCategorize(emails){
 }
 
 async function geminiDraft(email){
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cfg.geminiKey}`,{
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent?key=${cfg.geminiKey}`,{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       contents:[{parts:[{text:`Write a professional, natural reply to this email. Return ONLY the email body — no subject, no preamble.\n\nFrom: ${email.from}\nSubject: ${email.subject}\nContent: ${email.snippet}`}]}],
@@ -483,43 +483,84 @@ async function geminiDraft(email){
 }
 
 /* ━━━ SCAN ━━━ */
+// Browsers block popups unless triggered directly by a user click.
+// Solution: show a "Connect Account X" button for each account,
+// so each popup is opened by a real click — never auto-opened.
+
+let scanErrors=[];
+let scanIndex=0;
+
 async function runScan(){
-  const btn=document.getElementById('scan-btn');
-  btn.disabled=true;
-  document.getElementById('scan-icon').textContent='';
-  btn.querySelector('span').insertAdjacentHTML('afterend',' Scanning...');
+  scanErrors=[];
+  scanIndex=0;
+  showNextAccountPrompt();
+}
 
+function showNextAccountPrompt(){
+  const i=scanIndex;
+  if(i>=cfg.numAccounts){
+    finishScan();
+    return;
+  }
   const c=document.getElementById('content');
-  c.innerHTML=`<div class="lb"><div class="sp"></div>Starting scan — authorize Gmail in the popup windows...</div>`;
+  const skip = i>0 ? `<button class="btn" style="margin-left:8px;" onclick="skipAccount(${i})">Skip account ${i+1}</button>` : '';
+  c.innerHTML=`
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;gap:16px;">
+      <div style="font-size:32px;">📬</div>
+      <div style="font-size:15px;font-weight:600;">Connect Account ${i+1} of ${cfg.numAccounts}</div>
+      <div style="font-size:13px;color:var(--text2);max-width:360px;line-height:1.6;">
+        Click the button below to open Google sign-in for account ${i+1}.
+        ${i>0?'Make sure to sign in with a <strong>different</strong> Google account than the previous ones.':''}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn btn-ink" style="width:auto;padding:12px 28px;font-size:14px;" onclick="connectAccount(${i})">
+          Open Gmail sign-in →
+        </button>
+        ${skip}
+      </div>
+    </div>`;
+}
 
-  const errs=[];
-  for(let i=0;i<cfg.numAccounts;i++){
-    try{
-      c.innerHTML=`<div class="lb"><div class="sp"></div>Account ${i+1} — authorize Gmail in the popup window...</div>`;
-      const tok=await gmailAuth(i);
-      tokens[i]=tok;
-      c.innerHTML=`<div class="lb"><div class="sp"></div>Account ${i+1} connected — fetching emails...</div>`;
-      const [emails,addr]=await Promise.all([gmailFetch(tok),gmailProfile(tok)]);
-      allData[i].email=addr;
-      allData[i].name=addr.split('@')[0];
-      if(!emails.length){allData[i].emails=[];continue;}
-      c.innerHTML=`<div class="lb"><div class="sp"></div>Categorizing ${emails.length} emails from ${addr}...</div>`;
+async function connectAccount(i){
+  const c=document.getElementById('content');
+  try{
+    c.innerHTML=`<div class="lb"><div class="sp"></div>Waiting for Gmail authorization in the popup window...</div>`;
+    const tok=await gmailAuth(i);
+    tokens[i]=tok;
+    c.innerHTML=`<div class="lb"><div class="sp"></div>Connected! Fetching emails...</div>`;
+    const [emails,addr]=await Promise.all([gmailFetch(tok),gmailProfile(tok)]);
+    allData[i].email=addr;
+    allData[i].name=addr.split('@')[0];
+    if(emails.length){
+      c.innerHTML=`<div class="lb"><div class="sp"></div>Categorizing ${emails.length} emails from ${addr} with Gemini...</div>`;
       const cats=await geminiCategorize(emails);
       allData[i].emails=emails.map((e,j)=>({...e,category:cats[j]?.category||'other',reason:cats[j]?.reason||'',needsReply:!!cats[j]?.needsReply}));
-    }catch(e){
-      errs.push(`Account ${i+1}: ${e.message}`);
+    } else {
       allData[i].emails=[];
     }
+  }catch(e){
+    scanErrors.push(`Account ${i+1}: ${e.message}`);
+    allData[i].emails=[];
   }
+  renderSidebar();
+  scanIndex=i+1;
+  showNextAccountPrompt();
+}
 
+function skipAccount(i){
+  allData[i].emails=[];
+  scanIndex=i+1;
+  showNextAccountPrompt();
+}
+
+function finishScan(){
   const now=new Date();
   document.getElementById('ts').textContent='Last scan '+now.toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'});
-  renderSidebar();renderContent();
-  btn.disabled=false;
-  btn.innerHTML='<span>↻</span> Scan All';
-  if(errs.length){
+  renderSidebar();
+  renderContent();
+  if(scanErrors.length){
     const d=document.createElement('div');d.className='erbox';
-    d.innerHTML='<strong>Errors:</strong><br>'+errs.map(e=>`• ${esc(e)}`).join('<br>');
+    d.innerHTML='<strong>Errors:</strong><br>'+scanErrors.map(e=>`• ${esc(e)}`).join('<br>');
     document.getElementById('content').prepend(d);
   }
 }
