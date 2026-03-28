@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Email Agent (Smart Sorting & Skip Fix)</title>
+<title>Email Agent (Thread Edition)</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✉️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -73,7 +73,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 .tab.active{color:var(--primary);border-bottom-color:var(--primary);}
 .tab-badge{background:var(--bg3);padding:2px 6px;border-radius:10px;font-size:11px;}
 
-/* Categories (Inside Tabs) */
+/* Categories */
 .cb{margin-bottom:10px;}
 .ch{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;user-select:none;}
 .ch:hover{background:var(--bg3);}
@@ -91,7 +91,8 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 .er:last-child{border-bottom:none;}
 .er:hover{background:var(--bg3);}
 .e-info{cursor:pointer;}
-.ef{font-size:13px;font-weight:600;margin-bottom:1px;color:var(--text);}
+.ef{font-size:13px;font-weight:600;margin-bottom:1px;color:var(--text);display:flex;align-items:center;gap:6px;}
+.t-badge{font-size:10px;color:var(--text3);background:var(--bg3);padding:2px 6px;border-radius:6px;font-weight:500;}
 .es{font-size:13px;color:var(--text2);margin-bottom:2px;}
 .eq{font-size:11.5px;color:var(--text3);line-height:1.4;}
 .snippet-full{display:none;margin-top:4px;color:var(--text2);background:var(--bg);padding:8px;border-radius:6px;}
@@ -122,9 +123,9 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
 
 <div id="onboarding">
 <div class="ob-wrap">
-  <span class="ob-icon">🧠</span>
+  <span class="ob-icon">🗂️</span>
   <h1>Email Agent</h1>
-  <p class="sub">Hybrid Edition: Tabs + Categories. <strong>Live Delete enabled.</strong> Features a Keep/Trash memory system to learn your habits.</p>
+  <p class="sub">Thread Edition. Properly handles full conversation threads, fixes deletion bugs, and includes ultra-strict AI routing.</p>
   <div class="fl"><label>Groq API Key</label><input class="fi" id="ob-gk" type="password"></div>
   <div class="fl"><label>Google OAuth Client ID</label><input class="fi" id="ob-oc" type="text"></div>
   <div class="fl"><label>Accounts</label>
@@ -140,7 +141,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
     <div class="tb-l"><div class="tb-logo">✉</div><span class="tb-title">Email Agent</span></div>
     <div class="tb-r">
       <button class="btn" onclick="openSettings()">⚙</button>
-      <button class="scan-btn" onclick="runScan()" id="btn-scan">↻ Scan 100 Emails/Account</button>
+      <button class="scan-btn" onclick="runScan()" id="btn-scan">↻ Scan 100 Threads/Account</button>
     </div>
   </div>
 
@@ -150,7 +151,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--t
       <div id="sb-accs"></div>
     </div>
     <div class="content" id="content">
-      <div class="empty">Click <strong>Scan</strong> to fetch and categorize your emails.</div>
+      <div class="empty">Click <strong>Scan</strong> to fetch and sort your threads.</div>
     </div>
   </div>
 </div>
@@ -250,7 +251,7 @@ function learnAction(sender, action) {
   localStorage.setItem('ea_memory', JSON.stringify(memory));
 }
 
-// ━━━ AUTH & FETCH ━━━
+// ━━━ AUTH & THREAD FETCH ━━━
 function gmailAuth(idx){
   return new Promise((res,rej)=>{
     const scope='https://www.googleapis.com/auth/gmail.modify';
@@ -272,41 +273,46 @@ function gmailAuth(idx){
 }
 
 async function gmailFetch(token){
-  const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=in:inbox', {headers:{Authorization:'Bearer '+token}});
+  // FETCH THREADS INSTEAD OF MESSAGES
+  const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=100&q=in:inbox', {headers:{Authorization:'Bearer '+token}});
   if(!r.ok) {
     const errData = await r.json();
-    throw new Error(`Google API blocked the request. Did you check the permission box? Details: ${errData.error?.message || r.status}`);
+    throw new Error(`Google API blocked the request. Details: ${errData.error?.message || r.status}`);
   }
   
   const d=await r.json();
-  if(!d.messages) return [];
+  if(!d.threads) return [];
   
-  let msgs = [];
-  for(let i=0; i<d.messages.length; i+=25){
-    const chunk = d.messages.slice(i, i+25);
-    const chunkRes = await Promise.all(chunk.map(m=>
-      fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
+  let threads = [];
+  for(let i=0; i<d.threads.length; i+=25){
+    const chunk = d.threads.slice(i, i+25);
+    const chunkRes = await Promise.all(chunk.map(t=>
+      fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${t.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
         {headers:{Authorization:'Bearer '+token}}).then(res=>res.json())
     ));
-    msgs.push(...chunkRes);
+    threads.push(...chunkRes);
   }
 
-  return msgs.map(m=>{
-    const getHeader = (name) => {
-      const h = m.payload?.headers?.find(x => x.name.toLowerCase() === name.toLowerCase());
+  return threads.map(t=>{
+    const firstMsg = t.messages[0]; 
+    const lastMsg = t.messages[t.messages.length - 1]; 
+
+    const getHeader = (msg, name) => {
+      const h = msg.payload?.headers?.find(x => x.name.toLowerCase() === name.toLowerCase());
       return h ? h.value : '';
     };
     
     return { 
-      id: m.id, 
-      from: getHeader('From').replace(/<[^>]+>/,'').trim() || '(Unknown Sender)', 
-      subject: getHeader('Subject') || '(No Subject)', 
-      snippet: m.snippet || 'No preview available.' 
+      id: t.id, 
+      count: t.messages.length,
+      from: getHeader(lastMsg, 'From').replace(/<[^>]+>/,'').trim() || '(Unknown Sender)', 
+      subject: getHeader(firstMsg, 'Subject') || '(No Subject)', 
+      snippet: lastMsg.snippet || 'No preview available.' 
     };
   });
 }
 
-// ━━━ AI CATEGORIZATION (UPGRADED PROMPT) ━━━
+// ━━━ STRICT AI CATEGORIZATION ━━━
 async function groqCategorizeBatch(emails){
   let allCats = [];
   const BATCH_SIZE = 25; 
@@ -316,23 +322,23 @@ async function groqCategorizeBatch(emails){
     const list = chunk.map((e,idx)=>`[${idx}] From: ${e.from}\nSubj: ${e.subject}`).join('\n');
     
     let memoryContext = "";
-    if(memory.trashed.length > 0) memoryContext += `\n[MEMORY] USER TRASHES emails from: ${memory.trashed.join(', ')}. Route to 'Promotions' or 'Updates' tab and 'spam' or 'ads' category.`;
-    if(memory.kept.length > 0) memoryContext += `\n[MEMORY] USER KEEPS emails from: ${memory.kept.join(', ')}. Route to 'Primary' tab and 'important' or 'work' category.`;
+    if(memory.trashed.length > 0) memoryContext += `\n[USER MEMORY]: Trashed senders: ${memory.trashed.join(', ')} -> Tab MUST be 'Promotions', Category 'spam'.`;
+    if(memory.kept.length > 0) memoryContext += `\n[USER MEMORY]: Kept senders: ${memory.kept.join(', ')} -> Tab MUST be 'Primary', Category 'important'.`;
 
-    // EXPLICIT RULES to force Groq to classify correctly
-    const systemPrompt = `You are a strict email sorting algorithm. You MUST assign each email a "tab" AND a "category".
+    const systemPrompt = `You are a hyper-strict email sorting bot. Assign each email a "tab" and "category".
     [VALID TABS]: Primary, Promotions, Social, Updates
     [VALID CATEGORIES]: important, work, finance, social, newsletter, ads, spam, other
     
-    [ROUTING RULES]:
-    - If sender is LinkedIn, Facebook, Instagram, Twitter, TikTok, Booking.com -> Tab MUST BE "Social", Category MUST BE "social".
-    - If email is a discount, sale, store offer, or marketing -> Tab MUST BE "Promotions", Category MUST BE "ads".
-    - If email is a receipt, bill, bank alert -> Tab MUST BE "Updates", Category MUST BE "finance".
-    - If email is an automated system alert, job alert, Codeforces -> Tab MUST BE "Updates", Category MUST BE "work" or "other".
-    - If email is a real human directly emailing the user -> Tab MUST BE "Primary", Category MUST BE "important".
+    [ABSOLUTE ROUTING RULES - DO NOT VIOLATE]:
+    1. If sender is Booking.com, Airbnb, hotel, flight -> Tab: "Updates", Category: "important" or "finance".
+    2. If sender is IEEE, academic, university, school -> Tab: "Updates", Category: "work".
+    3. If sender is LinkedIn, Facebook, Instagram, TikTok -> Tab: "Social", Category: "social".
+    4. If sender is Codeforces, LeetCode, HackerRank -> Tab: "Updates", Category: "work".
+    5. If email is a direct message from a real human name -> Tab: "Primary", Category: "important".
+    6. If email contains discount, promo, sale -> Tab: "Promotions", Category: "ads".
     ${memoryContext}
     
-    Return ONLY a valid JSON object matching the exact order of the emails provided:
+    Return ONLY JSON:
     {"results": [{"tab": "...", "category": "..."}]}`;
 
     try {
@@ -403,7 +409,7 @@ function showNextAccountPrompt(){
 }
 
 function skipAccount(i){
-  // FIXED: No longer wipes existing emails for the skipped account.
+  // Preserves data if skipped!
   scanIndex++;
   showNextAccountPrompt();
 }
@@ -415,20 +421,19 @@ async function connectAccount(i){
     const tok = await gmailAuth(i);
     tokens[i] = tok; 
     
-    c.innerHTML=`<div class="lb"><span>📥</span> Fetching 100 emails securely...</div>`;
+    c.innerHTML=`<div class="lb"><span>📥</span> Fetching 100 threads securely...</div>`;
     const pr = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:'Bearer '+tok}});
     allData[i].email = (await pr.json()).emailAddress;
 
     const emails = await gmailFetch(tok);
     if(emails.length){
-      c.innerHTML=`<div class="lb"><span>🧠</span> Groq AI is categorizing ${emails.length} emails using your memory...</div>`;
+      c.innerHTML=`<div class="lb"><span>🧠</span> Groq AI is classifying ${emails.length} threads...</div>`;
       const cats = await groqCategorizeBatch(emails);
       allData[i].emails = emails.map((e,j)=>({...e, tab: cats[j].tab, category: cats[j].category}));
     } else {
       allData[i].emails = [];
     }
   }catch(e){ 
-    // FIXED: Does not wipe existing emails if the login fails or is closed early.
     scanErrors.push(`Account ${i+1}: ${e.message}`);
   }
   
@@ -468,11 +473,10 @@ function groupByCategory(emails) {
 function renderContent(){
   const acc = allData[activeAcc];
   if(!acc.emails || !acc.emails.length) { 
-      if(!document.querySelector('.erbox')) document.getElementById('content').innerHTML = '<div class="empty">No emails loaded for this account. Hit Scan!</div>'; 
+      if(!document.querySelector('.erbox')) document.getElementById('content').innerHTML = '<div class="empty">No emails loaded for this account.</div>'; 
       return; 
   }
   
-  // Render Tabs
   let html = `<div class="tabs">`;
   TABS.forEach(tab => {
     const count = acc.emails.filter(e => e.tab === tab).length;
@@ -483,15 +487,13 @@ function renderContent(){
   html += `</div>`;
 
   html += `<div class="tab-actions">
-    <div style="font-size:12px;color:var(--text3)">Emails in ${activeTab}</div>
+    <div style="font-size:12px;color:var(--text3)">Threads in ${activeTab}</div>
     <button class="btn btn-del-all" onclick="deleteAllInTab(this)">🗑 Trash entire ${activeTab} Tab</button>
   </div>`;
 
-  // Filter emails for current Tab
   const tabEmails = acc.emails.filter(e => e.tab === activeTab);
   if(tabEmails.length === 0) html += `<div class="empty">Nothing here!</div>`;
   
-  // Group by Category inside the Tab
   const grouped = groupByCategory(tabEmails);
   
   CAT_ORDER.forEach(cat => {
@@ -499,31 +501,34 @@ function renderContent(){
     if(!list || !list.length) return;
     
     const cfg2 = CATS[cat];
-    const open = list.length > 0; // Keep open by default if it has items
+    const open = list.length > 0; 
     
     html += `
       <div class="cb">
         <div class="ch ${open?'open':''}" onclick="togCat(this)">
           <div class="chl">
             <span class="ctag" style="background:${cfg2.bg};color:${cfg2.c}">${cfg2.e} ${cfg2.label}</span>
-            <span class="cn">${list.length} email${list.length>1?'s':''}</span>
+            <span class="cn">${list.length} thread${list.length>1?'s':''}</span>
           </div>
           <span class="chev ${open?'open':''}">▶</span>
         </div>
         <div class="ep ${open?'open':''}">`;
 
     list.forEach(e => {
+      // Add a visual badge if it's a multi-message thread
+      const threadBadge = e.count > 1 ? `<span class="t-badge">${e.count} msgs</span>` : '';
+      
       html += `
         <div class="er" id="em-${e.id}">
           <div class="e-info" onclick="this.classList.toggle('expanded')" title="Click to read full preview">
-            <div class="ef">${e.from}</div>
+            <div class="ef">${e.from} ${threadBadge}</div>
             <div class="es">${e.subject}</div>
             <div class="eq snippet-short">${e.snippet.substring(0,80)}... <span style="color:var(--blue);font-weight:500;">(Read more)</span></div>
             <div class="eq snippet-full">${e.snippet}</div>
           </div>
           <div class="er2">
-            <button class="eb2 kp" onclick="keepSingle('${e.id}', '${e.from}', this)">Keep</button>
-            <button class="eb2 dl" onclick="deleteSingle('${e.id}', '${e.from}', this)">Trash</button>
+            <button class="eb2 kp" onclick="keepSingle('${e.id}', '${e.from.replace(/'/g,"")}', this)">Keep</button>
+            <button class="eb2 dl" onclick="deleteSingle('${e.id}', '${e.from.replace(/'/g,"")}', this)">Trash</button>
           </div>
         </div>`;
     });
@@ -540,7 +545,7 @@ function togCat(h){
   h.classList.toggle('open'); p.classList.toggle('open'); cv.classList.toggle('open');
 }
 
-// ━━━ ACTIONS ━━━
+// ━━━ ACTIONS (TRASHING THREADS) ━━━
 
 function keepSingle(id, sender, btn){
   const acc = allData[activeAcc];
@@ -556,7 +561,8 @@ async function deleteSingle(id, sender, btn){
   btn.textContent = 'Trashing...';
 
   try {
-    const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}/trash`, {
+    // API CALL CHANGED TO TRASH ENTIRE THREAD
+    const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${id}/trash`, {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + tokens[activeAcc] }
     });
@@ -567,7 +573,7 @@ async function deleteSingle(id, sender, btn){
     acc.emails = acc.emails.filter(e => e.id !== id);
     renderSidebar(); 
   } catch(e) {
-    alert('Failed to trash. Please reset your data and Re-Scan to accept the new Google Delete Permissions.');
+    alert('Failed to trash thread. Please reset your data and Re-Scan to accept Google permissions.');
     btn.disabled = false;
     btn.textContent = 'Trash';
   }
@@ -578,7 +584,7 @@ async function deleteAllInTab(btn){
   const toDelete = acc.emails.filter(e => e.tab === activeTab);
   if(toDelete.length === 0) return;
   
-  if(!confirm(`Move ${toDelete.length} emails from ${activeTab} directly to your Gmail Trash?`)) return;
+  if(!confirm(`Move ${toDelete.length} threads from ${activeTab} directly to your Gmail Trash?`)) return;
   
   btn.disabled = true;
   const originalText = btn.textContent;
@@ -586,7 +592,7 @@ async function deleteAllInTab(btn){
   
   try {
     await Promise.all(toDelete.map(async (e) => {
-      await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${e.id}/trash`, {
+      await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${e.id}/trash`, {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + tokens[activeAcc] }
       });
@@ -597,7 +603,7 @@ async function deleteAllInTab(btn){
     renderContent();
     renderSidebar();
   } catch(e) {
-    alert('Some emails failed to trash. Check permissions.');
+    alert('Some threads failed to trash. Check permissions.');
     btn.disabled = false;
     btn.textContent = originalText;
   }
