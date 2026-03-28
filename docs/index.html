@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Email Agent</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✉️</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -453,7 +456,10 @@ function relTime(ds){
 /* ━━━ GEMINI ━━━ */
 async function geminiCategorize(emails){
   const list=emails.map((e,i)=>`[${i}] From: ${e.from}\nSubject: ${e.subject}\nPreview: ${e.snippet.slice(0,120)}`).join('\n\n');
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cfg.geminiKey}`,{
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${cfg.geminiKey}`;
+  console.log("Calling Gemini endpoint:", url.split('?')[0]); // Logs the URL (hiding the key) to ensure the right model is used
+  
+  const r=await fetch(url,{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       contents:[{parts:[{text:`Categorize each email. Categories: important, work, finance, social, newsletter, ads, spam, other.\nReturn ONLY a JSON array (same length, same order). Each item: {"category":"...","reason":"one sentence","needsReply":true/false}\n\nEmails:\n${list}`}]}],
@@ -468,7 +474,7 @@ async function geminiCategorize(emails){
 }
 
 async function geminiDraft(email){
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cfg.geminiKey}`,{
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${cfg.geminiKey}`,{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       contents:[{parts:[{text:`Write a professional, natural reply to this email. Return ONLY the email body — no subject, no preamble.\n\nFrom: ${email.from}\nSubject: ${email.subject}\nContent: ${email.snippet}`}]}],
