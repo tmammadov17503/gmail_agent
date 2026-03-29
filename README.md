@@ -1,79 +1,126 @@
-# Email Agent — Deployment Guide
+# Email Agent
 
-## How to get your personal URL (e.g. `yourname.github.io/email-agent`)
+Static Gmail inbox agent for scanning, sorting, reading, replying to, and bulk-cleaning email across multiple accounts.
 
-This takes about 5 minutes. No coding knowledge needed.
+## What It Does
 
----
+- Connects up to 3 Gmail accounts from a single interface
+- Keeps the real Gmail folder source visible: Primary, Promotions, Social, or Updates
+- Classifies threads into useful categories like Important, Work, Finance, Social, Newsletter, Ads, Spam, and Other
+- Lets you read full emails inside the app
+- Drafts replies with Groq when a key is provided
+- Adds bulk delete actions for each category and each Gmail folder
+- Handles larger cleanup runs with throttled batch trashing instead of tiny one-shot deletes
+- Works as a single static HTML app with no backend
+- Uses a responsive layout for desktop and mobile
 
-## Step 1 — Create a free GitHub account
-Go to https://github.com/signup and create a free account if you don't have one.
+## Why This Version Is Better
 
----
+This version was rebuilt to make Gmail folder detection more accurate, bulk deletion more practical, and the UI more polished across devices. If Gmail says a thread came from Social, the app keeps that source visible instead of guessing.
 
-## Step 2 — Create a new repository
-1. Click the **+** button (top right) → **New repository**
-2. Name it: `email-agent`
-3. Set it to **Public**
-4. Check **"Add a README file"**
-5. Click **Create repository**
+## Quick Start
 
----
+1. Open `docs/index.html`.
+2. Add your Google OAuth Client ID in the built-in `BUILTIN_DEFAULTS` block or enter it in the app UI.
+3. Keep the Groq key empty in code if the repo is public.
+4. Add your exact app URL to the Google Cloud OAuth redirect URIs.
+5. Open the app and click `Scan Inbox`.
+6. Authenticate the Gmail account(s) you want to use.
 
-## Step 3 — Upload the HTML file
-1. In your new repository, click **Add file → Upload files**
-2. Upload the `email_agent_final.html` file
-3. **Rename it to `index.html`** (important!)
-4. Click **Commit changes**
+## Configuration
 
----
+The app has a built-in config block inside `docs/index.html`:
 
-## Step 4 — Enable GitHub Pages
-1. Go to your repository → **Settings** tab
-2. Scroll to **Pages** (left sidebar)
-3. Under **Source**, select **Deploy from a branch**
-4. Branch: **main**, folder: **/ (root)**
-5. Click **Save**
+```js
+const BUILTIN_DEFAULTS = Object.freeze({
+  groqKey: '',
+  clientId: '',
+  numAccounts: 3,
+  scanLimit: 250
+});
+```
 
-Wait ~2 minutes, then your app is live at:
-`https://YOUR_USERNAME.github.io/email-agent/`
+### Recommended setup
 
----
+- `clientId`: set this once
+- `groqKey`: leave empty in the code for a public repo
+- `numAccounts`: choose your default number of Gmail accounts
+- `scanLimit`: choose how many threads to pull per account
 
-## Step 5 — Set up Google OAuth (add your GitHub Pages URL)
-1. Go to https://console.cloud.google.com/apis/credentials
-2. Find your OAuth 2.0 Client ID → click Edit
-3. Under **Authorized redirect URIs**, add:
-   `https://YOUR_USERNAME.github.io/email-agent/`
-4. Under **Authorized JavaScript origins**, add:
-   `https://YOUR_USERNAME.github.io`
-5. Save
+If you enter values in the app UI, they are stored in your browser `localStorage`.
 
----
+## Groq Is Optional
 
-## Step 6 — First launch
-1. Open your URL: `https://YOUR_USERNAME.github.io/email-agent/`
-2. Enter your Gemini API key and OAuth Client ID
-3. Click **Save & Launch**
-4. Done — keys are saved forever in your browser
+You can use the app without a Groq key.
 
-Next time you visit, it goes straight to the app. No login, no passwords.
+Without Groq:
+- Gmail folder detection still works
+- local heuristic categorization still works
+- reading and deleting still work
+- auto-drafted replies are disabled
 
----
+With Groq:
+- categorization becomes smarter
+- reply drafting is enabled
 
-## Updating the app in the future
-Just upload a new `index.html` to GitHub — the site updates automatically.
+## Gmail Permissions
 
----
+The app uses the full Gmail scope:
 
-## Your keys are safe
-- Keys are stored in `localStorage` — only in YOUR browser on YOUR device
-- They are never sent to any server (not GitHub, not anyone)
-- To use on another device/browser, go to Settings ⚙ and enter them once
+```txt
+https://mail.google.com/
+```
 
----
+That is required because the app can:
 
-## Quick links
-- Gemini API key: https://aistudio.google.com/apikey
-- Google Cloud Console: https://console.cloud.google.com/apis/credentials
-- GitHub: https://github.com
+- read inbox threads
+- move threads to Trash
+- send replies
+
+## Public Repo Safety
+
+If this project is public:
+
+- do not commit a live Groq key
+- do not commit personal API keys in text files
+- do not commit private client secrets you do not want exposed
+
+Your Google OAuth client ID is fine to expose for a browser app. That is normal.
+
+## Project Structure
+
+```txt
+gmail_agent/
+  docs/
+    index.html
+```
+
+## Deployment
+
+This project works well as a static site, including GitHub Pages.
+
+If you deploy it, make sure the deployed URL exactly matches the redirect URI configured in Google Cloud.
+
+## UX Highlights
+
+- folder-aware email badges
+- per-category `Delete All`
+- folder-wide bulk cleanup
+- full email reader modal
+- AI reply modal
+- mobile-friendly responsive layout
+
+## Notes
+
+- The app is client-side only
+- No backend database is required
+- Account tokens are browser-session based
+- Saved settings and memory live locally in the browser
+
+## Future Ideas
+
+- smarter sender rules
+- custom category presets
+- undo queue for bulk actions
+- export scan summaries
+- better thread-level analytics
