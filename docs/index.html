@@ -738,7 +738,7 @@ let allData = [];
 let tokens = [];
 let activeAcc = 0;
 let activeTab = 'Primary';
-let memory = loadJson(STORAGE_KEYS.memory, { trashed: [], kept: [] });
+let memory = normalizeMemory(loadJson(STORAGE_KEYS.memory, { trashed: [], kept: [], protectedThreads: [] }));
 let scanIndex = 0;
 let scanErrors = [];
 let currentReplyContext = {};
@@ -781,6 +781,15 @@ function normalizeConfig(raw){
     clientId: typeof raw.clientId === 'string' ? raw.clientId.trim() : BUILTIN_DEFAULTS.clientId,
     numAccounts,
     scanLimit
+  };
+}
+
+function normalizeMemory(raw){
+  const source = raw && typeof raw === 'object' ? raw : {};
+  return {
+    trashed: Array.isArray(source.trashed) ? source.trashed.filter(Boolean) : [],
+    kept: [],
+    protectedThreads: Array.isArray(source.protectedThreads) ? source.protectedThreads.filter(Boolean) : []
   };
 }
 
@@ -1175,9 +1184,6 @@ function heuristicCategory(email){
   if (memory.trashed.includes(email.senderKey)) {
     return { category: 'spam', reason: 'Sender was previously trashed.' };
   }
-  if (memory.kept.includes(email.senderKey)) {
-    return { category: 'important', reason: 'Sender was previously marked important.' };
-  }
   if (hasKeyword(haystack, FINANCE_KEYWORDS)) {
     return { category: 'finance', reason: 'Finance-related keywords were detected.' };
   }
@@ -1298,9 +1304,6 @@ function mergeCategory(email, heuristic, ai){
   if (memory.trashed.includes(email.senderKey)) {
     category = 'spam';
     reason = 'Sender was previously trashed.';
-  } else if (memory.kept.includes(email.senderKey)) {
-    category = 'important';
-    reason = 'Sender was previously marked important.';
   }
 
   if (email.tab === 'Social' && category === 'ads') {
@@ -1352,6 +1355,7 @@ async function fetchAndCategorize(index){
   const categories = await classifyEmails(emails);
   allData[index].emails = emails.map((email, idx) => ({
     ...email,
+    decision: memory.protectedThreads.includes(email.id) ? 'keep' : '',
     category: categories[idx].category,
     reason: categories[idx].reason
   }));
@@ -1548,7 +1552,7 @@ function groupByCategory(emails){
 }
 
 function isProtectedEmail(email){
-  return Boolean(email) && (email.decision === 'keep' || memory.kept.includes(email.senderKey));
+  return Boolean(email) && (email.decision === 'keep' || memory.protectedThreads.includes(email.id));
 }
 
 function renderContent(){
@@ -1592,9 +1596,9 @@ function renderContent(){
 
       <div class="hero-grid">
         <div class="stat-card">
-          <div class="stat-label">Review Queue</div>
-          <div class="stat-value">${reviewableEmails.length}</div>
-          <div class="stat-meta">${protectedCount} kept thread${protectedCount === 1 ? '' : 's'} hidden and protected</div>
+          <div class="stat-label">Loaded Threads</div>
+          <div class="stat-value">${account.emails.length}</div>
+          <div class="stat-meta">${protectedCount} protected thread${protectedCount === 1 ? '' : 's'} skipped by bulk delete</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">${activeTab} Folder</div>
@@ -1603,8 +1607,8 @@ function renderContent(){
         </div>
         <div class="stat-card">
           <div class="stat-label">AI Memory</div>
-          <div class="stat-value">${memory.kept.length + memory.trashed.length}</div>
-          <div class="stat-meta">${memory.kept.length} kept · ${memory.trashed.length} trashed senders</div>
+          <div class="stat-value">${memory.protectedThreads.length + memory.trashed.length}</div>
+          <div class="stat-meta">${memory.protectedThreads.length} protected threads · ${memory.trashed.length} trashed senders</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Last Scan</div>
@@ -1715,22 +1719,29 @@ function findThread(threadId){
 function syncMemory(emails, action){
   const kept = new Set(memory.kept || []);
   const trashed = new Set(memory.trashed || []);
+  const protectedThreads = new Set(memory.protectedThreads || []);
 
   emails.forEach(email => {
-    if (!email || !email.senderKey) return;
+    if (!email) return;
     if (action === 'trash') {
-      kept.delete(email.senderKey);
-      trashed.add(email.senderKey);
-    } else {
-      trashed.delete(email.senderKey);
-      kept.add(email.senderKey);
+      protectedThreads.delete(email.id);
+      if (email.senderKey) {
+        kept.delete(email.senderKey);
+        trashed.add(email.senderKey);
+      }
+      return;
+    }
+
+    if (action === 'keep') {
+      protectedThreads.add(email.id);
     }
   });
 
-  memory = {
+  memory = normalizeMemory({
     kept: Array.from(kept).slice(-MEMORY_LIMIT),
-    trashed: Array.from(trashed).slice(-MEMORY_LIMIT)
-  };
+    trashed: Array.from(trashed).slice(-MEMORY_LIMIT),
+    protectedThreads: Array.from(protectedThreads).slice(-MEMORY_LIMIT * 5)
+  });
   saveJson(STORAGE_KEYS.memory, memory);
 }
 
@@ -1745,9 +1756,7 @@ function keepThread(threadId){
 
   syncMemory([email], 'keep');
   email.decision = 'keep';
-  email.category = 'important';
-  email.reason = 'Sender was manually marked important and protected from bulk delete.';
-  uiNotice = { type: 'info', html: escHtml(email.from + ' is now hidden from review and protected from Delete All actions.') };
+  uiNotice = { type: 'info', html: escHtml('This thread is now protected and will be skipped by Delete All actions.') };
   renderSidebar();
   renderContent();
 }
@@ -1815,11 +1824,7 @@ async function deleteAllInTab(btn){
 
   try {
     const ids = await listThreadIds(tokens[activeAcc], query, cfg.scanLimit);
-    const protectedIds = new Set(
-      allData[activeAcc].emails
-        .filter(email => email.tab === activeTab && isProtectedEmail(email))
-        .map(email => email.id)
-    );
+    const protectedIds = new Set(memory.protectedThreads || []);
     const deletableIds = ids.filter(id => !protectedIds.has(id));
 
     if (!ids.length) {
@@ -1829,7 +1834,7 @@ async function deleteAllInTab(btn){
     }
 
     if (!deletableIds.length) {
-      uiNotice = { type: 'info', html: 'All loaded threads in ' + activeTab + ' are protected by Keep.' };
+      uiNotice = { type: 'info', html: 'All matching threads in ' + activeTab + ' are already protected by Keep.' };
       renderContent();
       return;
     }
@@ -1858,12 +1863,12 @@ function applyTrashNotice(scope, failed, skippedProtected){
   if (failed && failed.length) {
     uiNotice = {
       type: 'warning',
-      html: 'Some threads could not be deleted during ' + escHtml(scope) + '. Deleted the rest successfully.' + (skipped ? ' ' + skipped + ' kept thread(s) were skipped.' : '')
+      html: 'Some threads could not be deleted during ' + escHtml(scope) + '. Deleted the rest successfully.' + (skipped ? ' ' + skipped + ' protected thread(s) were skipped.' : '')
     };
   } else {
     uiNotice = {
       type: 'info',
-      html: 'Bulk delete completed successfully.' + (skipped ? ' ' + skipped + ' kept thread(s) were skipped.' : '')
+      html: 'Bulk delete completed successfully.' + (skipped ? ' ' + skipped + ' protected thread(s) were skipped.' : '')
     };
   }
 }
