@@ -704,7 +704,7 @@ const STORAGE_KEYS = Object.freeze({
   memory: 'ea_memory'
 });
 
-const TABS = ['Primary', 'Promotions', 'Social', 'Updates'];
+const TABS = ['Primary', 'Promotions', 'Social', 'Updates', 'Trash'];
 
 const CATS = {
   important: {label:'Important', c:'var(--blue)',   bg:'var(--blue-bg)',   e:'★'},
@@ -843,6 +843,7 @@ function initApp(){
     return {
       email: prev.email || 'Account ' + (index + 1),
       emails: Array.isArray(prev.emails) ? prev.emails : [],
+      trashEmails: Array.isArray(prev.trashEmails) ? prev.trashEmails : [],
       lastScanAt: prev.lastScanAt || 0,
       totalFetched: prev.totalFetched || 0
     };
@@ -1061,8 +1062,8 @@ async function listThreadIds(token, query, limit){
   return Array.from(new Set(ids)).slice(0, limit);
 }
 
-async function gmailFetchThreads(token, limit, onProgress){
-  const ids = await listThreadIds(token, 'in:inbox', limit);
+async function gmailFetchThreads(token, limit, query, onProgress, folderOverride){
+  const ids = await listThreadIds(token, query, limit);
   const collected = [];
 
   for (let i = 0; i < ids.length; i += THREAD_CHUNK_SIZE) {
@@ -1080,7 +1081,7 @@ async function gmailFetchThreads(token, limit, onProgress){
 
     results.forEach(item => {
       if (!item.__error) {
-        const normalized = normalizeThread(item);
+        const normalized = normalizeThread(item, folderOverride);
         if (normalized) collected.push(normalized);
       }
     });
@@ -1091,7 +1092,7 @@ async function gmailFetchThreads(token, limit, onProgress){
   return collected.sort((a, b) => b.time - a.time);
 }
 
-function normalizeThread(thread){
+function normalizeThread(thread, folderOverride){
   const messages = Array.isArray(thread.messages) ? thread.messages : [];
   if (!messages.length) return null;
 
@@ -1100,7 +1101,7 @@ function normalizeThread(thread){
   const rawFrom = getHeader(lastMessage, 'From') || getHeader(firstMessage, 'From') || '';
   const subject = getHeader(firstMessage, 'Subject') || getHeader(lastMessage, 'Subject') || '(No Subject)';
   const labelIds = collectLabelIds(messages);
-  const sourceFolder = inferGmailTab(labelIds);
+  const sourceFolder = folderOverride || inferGmailTab(labelIds);
   const senderEmail = extractEmailAddress(rawFrom);
   const displayFrom = cleanSenderName(rawFrom) || senderEmail || 'Unknown';
 
@@ -1329,30 +1330,45 @@ async function fetchAndCategorize(index){
   allData[index].email = accountEmail;
 
   setLoader('Account ' + (index + 1) + ': fetching inbox threads...', 'Up to ' + cfg.scanLimit + ' threads');
-  const emails = await gmailFetchThreads(tokens[index], cfg.scanLimit, (done, total) => {
+  const emails = await gmailFetchThreads(tokens[index], cfg.scanLimit, 'in:inbox', (done, total) => {
     setLoader('Account ' + (index + 1) + ': fetching inbox threads...', done + ' of ' + total + ' threads loaded');
   });
 
-  allData[index].totalFetched = emails.length;
-  allData[index].lastScanAt = Date.now();
+  let categorizedInbox = [];
+  if (emails.length) {
+    setLoader(
+      'Account ' + (index + 1) + ': categorizing ' + emails.length + ' threads...',
+      cfg.groqKey ? 'Using Gmail folder labels + Groq + local memory' : 'Using Gmail folder labels + local heuristics'
+    );
 
-  if (!emails.length) {
-    allData[index].emails = [];
-    return;
+    const categories = await classifyEmails(emails);
+    categorizedInbox = emails.map((email, idx) => ({
+      ...email,
+      decision: memory.protectedThreads.includes(email.id) ? 'keep' : '',
+      category: categories[idx].category,
+      reason: categories[idx].reason
+    }));
   }
 
-  setLoader(
-    'Account ' + (index + 1) + ': categorizing ' + emails.length + ' threads...',
-    cfg.groqKey ? 'Using Gmail folder labels + Groq + local memory' : 'Using Gmail folder labels + local heuristics'
-  );
+  setLoader('Account ' + (index + 1) + ': fetching trash threads...', 'Loading Gmail Trash');
+  const trashEmails = await gmailFetchThreads(tokens[index], cfg.scanLimit, 'in:trash', null, 'Trash');
+  const existingTrash = new Map(((allData[index].trashEmails || [])).map(email => [email.id, email]));
 
-  const categories = await classifyEmails(emails);
-  allData[index].emails = emails.map((email, idx) => ({
-    ...email,
-    decision: memory.protectedThreads.includes(email.id) ? 'keep' : '',
-    category: categories[idx].category,
-    reason: categories[idx].reason
-  }));
+  allData[index].emails = categorizedInbox;
+  allData[index].trashEmails = trashEmails.map(email => {
+    const previous = existingTrash.get(email.id);
+    return {
+      ...email,
+      tab: 'Trash',
+      sourceFolder: 'Trash',
+      previousFolder: previous && previous.previousFolder ? previous.previousFolder : 'Inbox',
+      category: 'trash',
+      reason: 'Currently in Gmail Trash.',
+      decision: ''
+    };
+  });
+  allData[index].totalFetched = categorizedInbox.length + allData[index].trashEmails.length;
+  allData[index].lastScanAt = Date.now();
 }
 async function runScan(){
   if (!cfg.clientId) {
@@ -1477,6 +1493,7 @@ function disconnectAccount(index){
   if (!confirm('Disconnect account ' + (index + 1) + ' from this browser session?')) return;
   tokens[index] = null;
   allData[index].emails = [];
+  allData[index].trashEmails = [];
   allData[index].email = 'Account ' + (index + 1);
   if (activeAcc === index) uiNotice = { type: 'info', html: 'Account ' + (index + 1) + ' was disconnected.' };
   renderSidebar();
@@ -1506,7 +1523,7 @@ function renderSidebar(){
       </button>`;
   }).join('');
 
-  const folderCounts = countTabs(allData[activeAcc] ? allData[activeAcc].emails : []);
+  const folderCounts = countTabs(allData[activeAcc] || null);
   document.getElementById('sb-folders').innerHTML = TABS.map(tab => `
     <button class="folder-item ${tab === activeTab ? 'active' : ''}" onclick="setActiveTab('${tab}')">
       <span>${tab}</span>
@@ -1526,13 +1543,14 @@ function setActiveTab(tab){
   renderContent();
 }
 
-function countTabs(emails){
+function countTabs(account){
   const counts = {};
   TABS.forEach(tab => { counts[tab] = 0; });
-  (emails || []).forEach(email => {
+  ((account && account.emails) || []).forEach(email => {
     if (isProtectedEmail(email)) return;
     counts[email.tab] = (counts[email.tab] || 0) + 1;
   });
+  counts.Trash = ((account && account.trashEmails) || []).length;
   return counts;
 }
 
@@ -1572,11 +1590,10 @@ function renderContent(){
     return;
   }
 
-  const tabCounts = countTabs(account.emails);
+  const tabCounts = countTabs(account);
   const protectedCount = account.emails.filter(email => isProtectedEmail(email)).length;
   const reviewableEmails = account.emails.filter(email => !isProtectedEmail(email));
-  const tabEmails = reviewableEmails.filter(email => email.tab === activeTab);
-  const grouped = groupByCategory(tabEmails);
+  const totalLoaded = account.emails.length + (account.trashEmails || []).length;
   const lastScanLabel = account.lastScanAt ? formatClock(account.lastScanAt) : 'Not scanned yet';
 
   let html = buildNoticeHtml();
@@ -1591,7 +1608,7 @@ function renderContent(){
       <div class="hero-grid">
         <div class="stat-card">
           <div class="stat-label">Loaded Threads</div>
-          <div class="stat-value">${account.emails.length}</div>
+          <div class="stat-value">${totalLoaded}</div>
           <div class="stat-meta">${protectedCount} protected thread${protectedCount === 1 ? '' : 's'} skipped by bulk delete</div>
         </div>
         <div class="stat-card">
@@ -1619,6 +1636,54 @@ function renderContent(){
           <span class="tab-badge">${tabCounts[tab] || 0}</span>
         </button>`).join('')}
     </div>
+  `;
+
+  if (activeTab === 'Trash') {
+    const trashEmails = (account.trashEmails || []).slice().sort((a, b) => b.time - a.time);
+    html += `
+      <div class="tab-actions">
+        <div class="tab-copy">Reviewing loaded Gmail <strong>Trash</strong>. Delete Forever permanently removes only the loaded trash threads shown here.</div>
+        <div class="action-group">
+          <button class="btn btn-soft" onclick="refreshSingleAccount(${activeAcc})">Refresh</button>
+          <button class="btn btn-soft" onclick="disconnectAccount(${activeAcc})">Disconnect</button>
+          <button class="btn btn-danger" onclick="deleteAllInTrash(this)">Delete All in Trash</button>
+        </div>
+      </div>`;
+
+    if (!trashEmails.length) {
+      html += `
+        <div class="empty">
+          <div class="empty-icon">🗑</div>
+          <h3>Trash is empty</h3>
+          <p>No loaded threads are currently sitting in Gmail Trash.</p>
+        </div>`;
+      content.innerHTML = html;
+      return;
+    }
+
+    html += `
+      <div class="cat-block">
+        <div class="cat-head open" onclick="toggleCategory(this)">
+          <div class="cat-left">
+            <span class="ctag" style="background:var(--red-bg);color:var(--red);">🗑 Trash Can</span>
+            <span class="cn">${trashEmails.length} thread${trashEmails.length > 1 ? 's' : ''}</span>
+          </div>
+          <div class="cat-tools">
+            <span class="chev open">▶</span>
+          </div>
+        </div>
+        <div class="cat-panel open">
+          ${trashEmails.map(email => renderTrashRow(email)).join('')}
+        </div>
+      </div>`;
+
+    content.innerHTML = html;
+    return;
+  }
+
+  const tabEmails = reviewableEmails.filter(email => email.tab === activeTab);
+  const grouped = groupByCategory(tabEmails);
+  html += `
 
     <div class="tab-actions">
       <div class="tab-copy">Reviewing loaded threads from Gmail <strong>${escHtml(activeTab)}</strong>. Delete All only affects the currently loaded threads in this tab, and protected threads are skipped.</div>
@@ -1694,6 +1759,30 @@ function renderEmailRow(email){
     </div>`;
 }
 
+function renderTrashRow(email){
+  return `
+    <div class="email-row" id="trash-${email.id}" onclick="openReader('${email.id}')">
+      <div class="email-main">
+        <div class="email-top">
+          <div class="ef">${escHtml(email.from)}</div>
+          <div class="badge-row">
+            <span class="mini-badge source">Trash</span>
+            ${email.previousFolder ? `<span class="mini-badge">From ${escHtml(email.previousFolder)}</span>` : ''}
+            ${email.count > 1 ? `<span class="mini-badge">${email.count} msgs</span>` : ''}
+            <span class="mini-badge">${escHtml(formatRelativeTime(email.time))}</span>
+          </div>
+        </div>
+        <div class="es">${escHtml(email.subject)}</div>
+        <div class="eq">${escHtml(truncate(email.snippet, 180))}</div>
+        <div class="email-note">This thread is already in Gmail Trash and can be permanently removed from here.</div>
+      </div>
+
+      <div class="email-actions">
+        <button class="action-btn trash" onclick="event.stopPropagation(); deleteForeverSingle('${email.id}', this)">Delete Forever</button>
+      </div>
+    </div>`;
+}
+
 function toggleCategory(head){
   head.classList.toggle('open');
   const panel = head.nextElementSibling;
@@ -1709,6 +1798,10 @@ function truncate(text, length){
 
 function findThread(threadId){
   return allData[activeAcc].emails.find(email => email.id === threadId) || null;
+}
+
+function findAnyThread(threadId){
+  return findThread(threadId) || findTrashThread(threadId);
 }
 function syncMemory(emails, action){
   const kept = new Set(memory.kept || []);
@@ -1744,6 +1837,36 @@ function removeThreadsFromActiveAccount(threadIds){
   allData[activeAcc].emails = allData[activeAcc].emails.filter(email => !idSet.has(email.id));
 }
 
+function removeThreadsFromTrash(threadIds){
+  const idSet = new Set(threadIds);
+  allData[activeAcc].trashEmails = allData[activeAcc].trashEmails.filter(email => !idSet.has(email.id));
+}
+
+function appendToTrashEmails(emails){
+  const merged = new Map((allData[activeAcc].trashEmails || []).map(email => [email.id, email]));
+
+  emails.forEach(email => {
+    if (!email) return;
+    const previous = merged.get(email.id) || {};
+    merged.set(email.id, {
+      ...email,
+      ...previous,
+      tab: 'Trash',
+      sourceFolder: 'Trash',
+      previousFolder: previous.previousFolder || email.previousFolder || email.tab || email.sourceFolder || 'Inbox',
+      category: 'trash',
+      reason: 'Currently in Gmail Trash.',
+      decision: ''
+    });
+  });
+
+  allData[activeAcc].trashEmails = Array.from(merged.values()).sort((a, b) => b.time - a.time);
+}
+
+function findTrashThread(threadId){
+  return allData[activeAcc].trashEmails.find(email => email.id === threadId) || null;
+}
+
 function keepThread(threadId){
   const email = findThread(threadId);
   if (!email) return;
@@ -1770,6 +1893,7 @@ async function trashSingleThread(threadId, btn){
 
     if (result.failed.length) throw new Error(result.failed[0].message);
     syncMemory([email], 'trash');
+    appendToTrashEmails([email]);
     removeThreadsFromActiveAccount([threadId]);
     uiNotice = { type: 'info', html: escHtml('Moved "' + email.subject + '" to Gmail Trash.') };
     renderSidebar();
@@ -1797,6 +1921,7 @@ async function deleteAllInCategory(category, btn){
 
     const successEmails = threads.filter(thread => !result.failedIds.has(thread.id));
     syncMemory(successEmails, 'trash');
+    appendToTrashEmails(successEmails);
     removeThreadsFromActiveAccount(successEmails.map(thread => thread.id));
     applyTrashNotice('category cleanup', result.failed);
     renderSidebar();
@@ -1833,6 +1958,7 @@ async function deleteAllInTab(btn){
     const successSet = new Set(successIds);
     const loadedDeleted = allData[activeAcc].emails.filter(email => successSet.has(email.id));
     syncMemory(loadedDeleted, 'trash');
+    appendToTrashEmails(loadedDeleted);
     removeThreadsFromActiveAccount(successIds);
     applyTrashNotice(activeTab + ' cleanup', result.failed, skippedProtected);
     renderSidebar();
@@ -1855,6 +1981,20 @@ function applyTrashNotice(scope, failed, skippedProtected){
     uiNotice = {
       type: 'info',
       html: 'Bulk delete completed successfully.' + (skipped ? ' ' + skipped + ' protected thread(s) were skipped.' : '')
+    };
+  }
+}
+
+function applyPermanentDeleteNotice(scope, failed){
+  if (failed && failed.length) {
+    uiNotice = {
+      type: 'warning',
+      html: 'Some threads could not be permanently deleted during ' + escHtml(scope) + '.'
+    };
+  } else {
+    uiNotice = {
+      type: 'info',
+      html: 'Permanent delete completed successfully.'
     };
   }
 }
@@ -1898,6 +2038,102 @@ async function trashThreadIds(token, ids, onProgress){
   };
 }
 
+async function deleteForeverThreadIds(token, ids, onProgress){
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  const failed = [];
+  let done = 0;
+
+  for (let i = 0; i < uniqueIds.length; i += TRASH_BATCH_SIZE) {
+    const chunk = uniqueIds.slice(i, i + TRASH_BATCH_SIZE);
+
+    const results = await Promise.allSettled(
+      chunk.map(id =>
+        requestJson(
+          'https://gmail.googleapis.com/gmail/v1/users/me/threads/' + id,
+          {
+            method: 'DELETE',
+            headers: { Authorization: 'Bearer ' + token }
+          },
+          'Unable to permanently delete Gmail thread.'
+        )
+      )
+    );
+
+    results.forEach((result, index) => {
+      done += 1;
+      if (result.status === 'rejected') {
+        failed.push({ id: chunk[index], message: result.reason.message || 'Unable to permanently delete thread.' });
+      }
+    });
+
+    if (onProgress) onProgress(done, uniqueIds.length, failed.length);
+    if (i + TRASH_BATCH_SIZE < uniqueIds.length) await sleep(140);
+  }
+
+  return {
+    total: uniqueIds.length,
+    failed,
+    failedIds: new Set(failed.map(item => item.id))
+  };
+}
+
+async function deleteForeverSingle(threadId, btn){
+  const email = findTrashThread(threadId);
+  if (!email) return;
+
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Deleting...';
+
+  try {
+    const result = await deleteForeverThreadIds(tokens[activeAcc], [threadId], (done, total) => {
+      btn.textContent = done + '/' + total;
+    });
+
+    if (result.failed.length) throw new Error(result.failed[0].message);
+    removeThreadsFromTrash([threadId]);
+    uiNotice = { type: 'info', html: escHtml('Permanently deleted "' + email.subject + '" from Gmail Trash.') };
+    renderSidebar();
+    renderContent();
+  } catch (error) {
+    btn.disabled = false;
+    btn.textContent = original;
+    alert('Permanent delete failed: ' + error.message);
+  }
+}
+
+async function deleteAllInTrash(btn){
+  const trashEmails = (allData[activeAcc].trashEmails || []).slice();
+  if (!trashEmails.length) {
+    uiNotice = { type: 'info', html: 'Trash is already empty.' };
+    renderContent();
+    return;
+  }
+
+  if (!confirm('Permanently delete ' + trashEmails.length + ' loaded thread(s) from Gmail Trash? This cannot be undone.')) return;
+
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Deleting...';
+
+  try {
+    const ids = trashEmails.map(email => email.id);
+    const result = await deleteForeverThreadIds(tokens[activeAcc], ids, (done, total) => {
+      btn.textContent = 'Deleting ' + done + '/' + total;
+    });
+
+    const successIds = ids.filter(id => !result.failedIds.has(id));
+    removeThreadsFromTrash(successIds);
+    applyPermanentDeleteNotice('trash cleanup', result.failed);
+    renderSidebar();
+    renderContent();
+  } catch (error) {
+    btn.disabled = false;
+    btn.textContent = original;
+    alert('Delete All in Trash failed: ' + error.message);
+  }
+}
+
 function decodeBase64Url(data){
   if (!data) return '';
   try {
@@ -1929,7 +2165,7 @@ function extractBody(payload){
 }
 
 async function openReader(threadId){
-  const email = findThread(threadId);
+  const email = findAnyThread(threadId);
   if (!email) return;
 
   document.getElementById('read-modal').classList.add('open');
