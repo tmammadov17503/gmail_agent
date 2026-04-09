@@ -705,12 +705,6 @@ const STORAGE_KEYS = Object.freeze({
 });
 
 const TABS = ['Primary', 'Promotions', 'Social', 'Updates'];
-const TAB_QUERIES = Object.freeze({
-  Primary: 'in:inbox category:primary',
-  Promotions: 'in:inbox category:promotions',
-  Social: 'in:inbox category:social',
-  Updates: 'in:inbox category:updates'
-});
 
 const CATS = {
   important: {label:'Important', c:'var(--blue)',   bg:'var(--blue-bg)',   e:'★'},
@@ -1627,7 +1621,7 @@ function renderContent(){
     </div>
 
     <div class="tab-actions">
-      <div class="tab-copy">Reviewing threads from Gmail <strong>${escHtml(activeTab)}</strong>. Tab delete uses the real Gmail folder query and is not limited to the visible list only.</div>
+      <div class="tab-copy">Reviewing loaded threads from Gmail <strong>${escHtml(activeTab)}</strong>. Delete All only affects the currently loaded threads in this tab, and protected threads are skipped.</div>
       <div class="action-group">
         <button class="btn btn-soft" onclick="refreshSingleAccount(${activeAcc})">Refresh</button>
         <button class="btn btn-soft" onclick="disconnectAccount(${activeAcc})">Disconnect</button>
@@ -1815,30 +1809,22 @@ async function deleteAllInCategory(category, btn){
 }
 
 async function deleteAllInTab(btn){
-  const query = TAB_QUERIES[activeTab] || 'in:inbox';
-  if (!confirm('Move up to ' + cfg.scanLimit + ' unprotected threads from Gmail ' + activeTab + ' to Trash? Kept items will be skipped.')) return;
+  const tabThreads = allData[activeAcc].emails.filter(email => email.tab === activeTab && !isProtectedEmail(email));
+  const skippedProtected = allData[activeAcc].emails.filter(email => email.tab === activeTab && isProtectedEmail(email)).length;
+  if (!tabThreads.length) {
+    uiNotice = { type: 'info', html: 'There are no loaded unprotected threads left in ' + activeTab + '.' };
+    renderContent();
+    return;
+  }
+
+  if (!confirm('Move ' + tabThreads.length + ' loaded unprotected thread(s) from Gmail ' + activeTab + ' to Trash? Protected threads will be skipped.')) return;
 
   const original = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'Loading...';
+  btn.textContent = 'Deleting...';
 
   try {
-    const ids = await listThreadIds(tokens[activeAcc], query, cfg.scanLimit);
-    const protectedIds = new Set(memory.protectedThreads || []);
-    const deletableIds = ids.filter(id => !protectedIds.has(id));
-
-    if (!ids.length) {
-      uiNotice = { type: 'info', html: 'No Gmail threads were found in ' + activeTab + '.' };
-      renderContent();
-      return;
-    }
-
-    if (!deletableIds.length) {
-      uiNotice = { type: 'info', html: 'All matching threads in ' + activeTab + ' are already protected by Keep.' };
-      renderContent();
-      return;
-    }
-
+    const deletableIds = tabThreads.map(thread => thread.id);
     const result = await trashThreadIds(tokens[activeAcc], deletableIds, (done, total) => {
       btn.textContent = 'Deleting ' + done + '/' + total;
     });
@@ -1848,7 +1834,7 @@ async function deleteAllInTab(btn){
     const loadedDeleted = allData[activeAcc].emails.filter(email => successSet.has(email.id));
     syncMemory(loadedDeleted, 'trash');
     removeThreadsFromActiveAccount(successIds);
-    applyTrashNotice(activeTab + ' cleanup', result.failed, ids.length - deletableIds.length);
+    applyTrashNotice(activeTab + ' cleanup', result.failed, skippedProtected);
     renderSidebar();
     renderContent();
   } catch (error) {
