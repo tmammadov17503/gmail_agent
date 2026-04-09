@@ -1532,6 +1532,7 @@ function countTabs(emails){
   const counts = {};
   TABS.forEach(tab => { counts[tab] = 0; });
   (emails || []).forEach(email => {
+    if (isProtectedEmail(email)) return;
     counts[email.tab] = (counts[email.tab] || 0) + 1;
   });
   return counts;
@@ -1544,6 +1545,10 @@ function groupByCategory(emails){
     grouped[email.category].push(email);
   });
   return grouped;
+}
+
+function isProtectedEmail(email){
+  return Boolean(email) && (email.decision === 'keep' || memory.kept.includes(email.senderKey));
 }
 
 function renderContent(){
@@ -1570,7 +1575,9 @@ function renderContent(){
   }
 
   const tabCounts = countTabs(account.emails);
-  const tabEmails = account.emails.filter(email => email.tab === activeTab);
+  const protectedCount = account.emails.filter(email => isProtectedEmail(email)).length;
+  const reviewableEmails = account.emails.filter(email => !isProtectedEmail(email));
+  const tabEmails = reviewableEmails.filter(email => email.tab === activeTab);
   const grouped = groupByCategory(tabEmails);
   const lastScanLabel = account.lastScanAt ? formatClock(account.lastScanAt) : 'Not scanned yet';
 
@@ -1585,9 +1592,9 @@ function renderContent(){
 
       <div class="hero-grid">
         <div class="stat-card">
-          <div class="stat-label">Loaded Threads</div>
-          <div class="stat-value">${account.emails.length}</div>
-          <div class="stat-meta">Up to your scan limit of ${cfg.scanLimit}</div>
+          <div class="stat-label">Review Queue</div>
+          <div class="stat-value">${reviewableEmails.length}</div>
+          <div class="stat-meta">${protectedCount} kept thread${protectedCount === 1 ? '' : 's'} hidden and protected</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">${activeTab} Folder</div>
@@ -1629,7 +1636,7 @@ function renderContent(){
       <div class="empty">
         <div class="empty-icon">🧹</div>
         <h3>No loaded threads in ${escHtml(activeTab)}</h3>
-        <p>Try another folder, refresh this account, or increase the scan limit in settings.</p>
+        <p>No reviewable threads are left in this folder. Kept threads are hidden from the cleanup queue and skipped by bulk delete.</p>
       </div>`;
     content.innerHTML = html;
     return;
@@ -1737,9 +1744,10 @@ function keepThread(threadId){
   if (!email) return;
 
   syncMemory([email], 'keep');
+  email.decision = 'keep';
   email.category = 'important';
-  email.reason = 'Sender was manually marked important.';
-  uiNotice = { type: 'info', html: escHtml(email.from + ' will now be treated as important on future scans.') };
+  email.reason = 'Sender was manually marked important and protected from bulk delete.';
+  uiNotice = { type: 'info', html: escHtml(email.from + ' is now hidden from review and protected from Delete All actions.') };
   renderSidebar();
   renderContent();
 }
@@ -1771,10 +1779,10 @@ async function trashSingleThread(threadId, btn){
 }
 
 async function deleteAllInCategory(category, btn){
-  const threads = allData[activeAcc].emails.filter(email => email.tab === activeTab && email.category === category);
+  const threads = allData[activeAcc].emails.filter(email => email.tab === activeTab && email.category === category && !isProtectedEmail(email));
   if (!threads.length) return;
 
-  if (!confirm('Move ' + threads.length + ' thread(s) from this category to Gmail Trash?')) return;
+  if (!confirm('Move ' + threads.length + ' unprotected thread(s) from this category to Gmail Trash? Kept items will be skipped.')) return;
 
   const original = btn.textContent;
   btn.disabled = true;
@@ -1799,7 +1807,7 @@ async function deleteAllInCategory(category, btn){
 
 async function deleteAllInTab(btn){
   const query = TAB_QUERIES[activeTab] || 'in:inbox';
-  if (!confirm('Move up to ' + cfg.scanLimit + ' threads from Gmail ' + activeTab + ' to Trash? This can include more than the visible rows.')) return;
+  if (!confirm('Move up to ' + cfg.scanLimit + ' unprotected threads from Gmail ' + activeTab + ' to Trash? Kept items will be skipped.')) return;
 
   const original = btn.textContent;
   btn.disabled = true;
@@ -1807,22 +1815,35 @@ async function deleteAllInTab(btn){
 
   try {
     const ids = await listThreadIds(tokens[activeAcc], query, cfg.scanLimit);
+    const protectedIds = new Set(
+      allData[activeAcc].emails
+        .filter(email => email.tab === activeTab && isProtectedEmail(email))
+        .map(email => email.id)
+    );
+    const deletableIds = ids.filter(id => !protectedIds.has(id));
+
     if (!ids.length) {
       uiNotice = { type: 'info', html: 'No Gmail threads were found in ' + activeTab + '.' };
       renderContent();
       return;
     }
 
-    const result = await trashThreadIds(tokens[activeAcc], ids, (done, total) => {
+    if (!deletableIds.length) {
+      uiNotice = { type: 'info', html: 'All loaded threads in ' + activeTab + ' are protected by Keep.' };
+      renderContent();
+      return;
+    }
+
+    const result = await trashThreadIds(tokens[activeAcc], deletableIds, (done, total) => {
       btn.textContent = 'Deleting ' + done + '/' + total;
     });
 
-    const successIds = ids.filter(id => !result.failedIds.has(id));
+    const successIds = deletableIds.filter(id => !result.failedIds.has(id));
     const successSet = new Set(successIds);
     const loadedDeleted = allData[activeAcc].emails.filter(email => successSet.has(email.id));
     syncMemory(loadedDeleted, 'trash');
     removeThreadsFromActiveAccount(successIds);
-    applyTrashNotice(activeTab + ' cleanup', result.failed);
+    applyTrashNotice(activeTab + ' cleanup', result.failed, ids.length - deletableIds.length);
     renderSidebar();
     renderContent();
   } catch (error) {
@@ -1832,16 +1853,17 @@ async function deleteAllInTab(btn){
   }
 }
 
-function applyTrashNotice(scope, failed){
+function applyTrashNotice(scope, failed, skippedProtected){
+  const skipped = skippedProtected || 0;
   if (failed && failed.length) {
     uiNotice = {
       type: 'warning',
-      html: 'Some threads could not be deleted during ' + escHtml(scope) + '. Deleted the rest successfully.'
+      html: 'Some threads could not be deleted during ' + escHtml(scope) + '. Deleted the rest successfully.' + (skipped ? ' ' + skipped + ' kept thread(s) were skipped.' : '')
     };
   } else {
     uiNotice = {
       type: 'info',
-      html: 'Bulk delete completed successfully.'
+      html: 'Bulk delete completed successfully.' + (skipped ? ' ' + skipped + ' kept thread(s) were skipped.' : '')
     };
   }
 }
